@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SD Hub Chargeability Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117; --bg2: #161820; --bg3: #1d1f2a; --bg4: #252838;
+    --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.13);
+    --text: #e8e9f0; --text2: #8e90a0; --text3: #4e5060;
+    --accent: #4f8ef7; --accent2: #7c6af5;
+    --green: #3ecf8e; --amber: #f5a623; --red: #f26b6b; --teal: #2dd4bf;
+    --font: 'DM Sans', sans-serif; --mono: 'DM Mono', monospace;
+    --r: 10px; --rl: 14px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; line-height: 1.5; }
+
+  /* ── HEADER ── */
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 28px; border-bottom: 1px solid var(--border);
+    background: var(--bg2); position: sticky; top: 0; z-index: 100;
+  }
+  .logo-mark {
+    width: 30px; height: 30px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 7px; display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600; color: #fff;
+  }
+  .header-title { font-size: 14px; font-weight: 500; }
+  .header-sub { font-size: 11px; color: var(--text2); }
+  .period-badge {
+    font-family: var(--mono); font-size: 11px;
+    background: var(--bg4); border: 1px solid var(--border2);
+    color: var(--text2); padding: 4px 10px; border-radius: 6px;
+  }
+
+  /* ── UPLOAD ── */
+  #upload-zone {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; min-height: calc(100vh - 57px); padding: 40px;
+  }
+  .upload-card {
+    background: var(--bg2); border: 1.5px dashed var(--border2);
+    border-radius: var(--rl); padding: 48px 56px; text-align: center;
+    max-width: 520px; width: 100%; cursor: pointer;
+    transition: border-color .2s, background .2s; position: relative;
+  }
+  .upload-card:hover, .upload-card.drag-over { border-color: var(--accent); background: rgba(79,142,247,.05); }
+  .upload-icon { width: 48px; height: 48px; background: var(--bg4); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0 auto 18px; font-size: 20px; }
+  .upload-title { font-size: 17px; font-weight: 500; margin-bottom: 8px; }
+  .upload-sub { font-size: 13px; color: var(--text2); line-height: 1.6; }
+  .upload-hint { margin-top: 18px; font-size: 11px; color: var(--text3); font-family: var(--mono); }
+  #file-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+  /* ── DASHBOARD ── */
+  #dashboard { display: none; padding: 20px 28px 48px; }
+
+  /* ── FILTER BAR ── */
+  .filter-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .filter-sep { width: 1px; height: 20px; background: var(--border2); margin: 0 4px; }
+  .filter-label { font-size: 13px; color: var(--text2); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+  .f-btn {
+    font-family: var(--mono); font-size: 13px; padding: 5px 14px;
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 5px; color: var(--text2); cursor: pointer; transition: all .15s; white-space: nowrap;
+  }
+  .f-btn:hover { border-color: var(--border2); color: var(--text); }
+  .f-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
+  .f-btn.all-active { background: var(--bg4); border-color: var(--border2); color: var(--text); }
+  .reload-btn { margin-left: auto; font-size: 12px; padding: 5px 14px; background: transparent; border: 1px solid var(--border2); border-radius: 5px; color: var(--text2); cursor: pointer; }
+  .reload-btn:hover { color: var(--text); border-color: var(--text2); }
+
+  /* ── KPI CARDS ── */
+  .kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+  .kpi { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--rl); padding: 16px 18px; position: relative; overflow: hidden; }
+  .kpi::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; }
+  .kpi.c-blue::before { background: linear-gradient(90deg,var(--accent),var(--accent2)); }
+  .kpi.c-green::before { background: var(--green); }
+  .kpi.c-amber::before { background: var(--amber); }
+  .kpi.c-teal::before { background: var(--teal); }
+  .kpi.c-red::before { background: var(--red); }
+  .kpi-label { font-size: 12px; color: var(--text2); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
+  .kpi-value { font-size: 28px; font-weight: 300; font-family: var(--mono); letter-spacing: -1px; }
+  .kpi-value span { font-size: 14px; font-weight: 400; color: var(--text2); }
+  .kpi-sub { font-size: 11px; color: var(--text3); margin-top: 3px; }
+
+  /* ── CHART GRID ── */
+  .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+  .chart-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--rl); padding: 18px 20px; }
+  .card-full { grid-column: 1 / -1; }
+  .card-title { font-size: 12px; font-weight: 500; color: var(--text2); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 14px; }
+  .chart-wrap { position: relative; }
+
+  /* ── TABLES ── */
+  .table-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--rl); overflow: hidden; margin-bottom: 20px; }
+  .table-hdr { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .table-title { font-size: 12px; font-weight: 500; color: var(--text2); text-transform: uppercase; letter-spacing: .05em; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { font-size: 11px; font-weight: 500; color: var(--text3); text-transform: uppercase; letter-spacing: .04em; padding: 9px 18px; text-align: left; border-bottom: 1px solid var(--border); background: var(--bg3); white-space: nowrap; }
+  tbody td { padding: 10px 18px; font-size: 13px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: rgba(255,255,255,.02); }
+  .tl-row td { opacity: .55; }
+  .mono { font-family: var(--mono); }
+  .bold { font-weight: 500; }
+
+  /* ── INFO BUTTON & TOOLTIP ── */
+  .info-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--bg4); border: 1px solid var(--border2);
+    color: var(--text3); font-size: 11px; font-weight: 600;
+    cursor: pointer; flex-shrink: 0; transition: all .15s;
+    font-family: var(--font); line-height: 1; user-select: none;
+    position: relative;
+  }
+  .info-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(79,142,247,.1); }
+  .tooltip-box {
+    display: none; position: fixed; z-index: 999;
+    background: var(--bg3); border: 1px solid var(--border2);
+    border-radius: 10px; padding: 14px 16px;
+    max-width: 340px; width: max-content;
+    box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  }
+  .tooltip-box.visible { display: block; }
+  .tooltip-title { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+  .tooltip-body { font-size: 12px; color: var(--text2); line-height: 1.6; }
+  .tooltip-body strong { color: var(--text); font-weight: 500; }
+  .tooltip-formula {
+    margin-top: 10px; padding: 8px 10px;
+    background: var(--bg4); border-radius: 6px;
+    font-family: var(--mono); font-size: 11px; color: var(--teal);
+    line-height: 1.7;
+  }
+
+  /* ── MINI BAR ── */
+  .bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .bar-bg { flex: 1; height: 3px; background: var(--bg4); border-radius: 2px; min-width: 60px; }
+  .bar-fill { height: 100%; border-radius: 2px; }
+  .pv { font-family: var(--mono); font-size: 12px; min-width: 42px; text-align: right; font-weight: 500; }
+
+  /* ── TAGS ── */
+  .tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; font-family: var(--mono); text-transform: uppercase; letter-spacing: .03em; }
+  .tag-h { background: rgba(62,207,142,.12); color: var(--green); border: 1px solid rgba(62,207,142,.25); }
+  .tag-m { background: rgba(245,166,35,.12); color: var(--amber); border: 1px solid rgba(245,166,35,.25); }
+  .tag-l { background: rgba(242,107,107,.12); color: var(--red); border: 1px solid rgba(242,107,107,.25); }
+  .tag-tl { background: rgba(79,142,247,.1); color: var(--accent); border: 1px solid rgba(79,142,247,.25); }
+  .tag-ot { background: rgba(168,85,247,.12); color: #c084fc; border: 1px solid rgba(168,85,247,.3); }
+
+  /* ── TEAM HEAT GRID ── */
+  .heat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+  .heat-cell {
+    background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r);
+    padding: 12px 14px; cursor: pointer; transition: border-color .15s, background .15s;
+    position: relative; overflow: hidden;
+  }
+  .heat-cell:hover { border-color: var(--border2); background: var(--bg4); }
+  .heat-cell.selected { border-color: var(--accent); }
+  .heat-cell::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 3px 0 0 3px; }
+  .heat-cell-name { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
+  .heat-cell-sub { font-size: 11px; color: var(--text2); }
+  .heat-cell-pct { font-family: var(--mono); font-size: 20px; font-weight: 300; margin-top: 6px; }
+
+  .legend { display: flex; gap: 14px; align-items: center; font-size: 11px; color: var(--text2); }
+  .ldot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+  .footer-note { font-size: 11px; color: var(--text3); text-align: center; padding: 8px; font-family: var(--mono); }
+
+  .section-sep { display: flex; align-items: center; gap: 10px; margin: 20px 0 14px; }
+  .section-sep-line { flex: 1; height: 1px; background: var(--border); }
+  .section-sep-text { font-size: 11px; font-weight: 500; color: var(--text3); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+
+  @media (max-width: 1000px) {
+    .kpi-row { grid-template-columns: repeat(3, 1fr); }
+    .chart-row, .chart-row-3 { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 700px) {
+    .kpi-row { grid-template-columns: repeat(2, 1fr); }
+    #dashboard { padding: 12px; }
+    .header { padding: 12px 14px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div class="logo-mark">IQ</div>
+    <div>
+      <div class="header-title">Chargeability Dashboard</div>
+      <div class="header-sub">IPSOS Data Solutions — SW &amp; QA Hub</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;">
+    <div class="period-badge" id="period-badge">No data</div>
+  </div>
+</div>
+
+<div id="upload-zone">
+  <div class="upload-card" id="drop-zone">
+    <input type="file" id="file-input" accept=".csv">
+    <div class="upload-icon">📂</div>
+    <div class="upload-title">Drop your iTime export here</div>
+    <div class="upload-sub">Upload <strong>EmployeeTimeReport.csv</strong> from iTime.<br>All 10 SD/QA teams are auto-detected and calculated.</div>
+    <div class="upload-hint">10 teams · 80+ people · any date range</div>
+  </div>
+</div>
+
+<div id="tooltip-box" class="tooltip-box"></div>
+
+<div id="dashboard">
+
+  <!-- FILTER BAR -->
+  <div class="filter-bar">
+    <span class="filter-label">Month</span>
+    <div id="month-filters" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+    <div class="filter-sep"></div>
+    <span class="filter-label">Team</span>
+    <div id="team-filters" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+    <button class="reload-btn" onclick="triggerReload()">↑ New file</button>
+  </div>
+
+  <!-- KPI ROW -->
+  <div class="kpi-row">
+    <div class="kpi c-blue">
+      <div class="kpi-label">Avg. Chargeability</div>
+      <div class="kpi-value" id="k-charge">—<span>%</span></div>
+      <div class="kpi-sub" id="k-charge-sub">selected teams excl. TL</div>
+    </div>
+    <div class="kpi c-green">
+      <div class="kpi-label">Chargeable Hours</div>
+      <div class="kpi-value" id="k-proj">—<span> h</span></div>
+      <div class="kpi-sub">billable project time</div>
+    </div>
+    <div class="kpi c-amber">
+      <div class="kpi-label">Free Time</div>
+      <div class="kpi-value" id="k-free">—<span> h</span></div>
+      <div class="kpi-sub">admin + idle</div>
+    </div>
+    <div class="kpi c-teal">
+      <div class="kpi-label">Avg Free / Day</div>
+      <div class="kpi-value" id="k-fpd">—<span> h</span></div>
+      <div class="kpi-sub">per person / working day</div>
+    </div>
+    <div class="kpi c-red">
+      <div class="kpi-label">Vacation Hours</div>
+      <div class="kpi-value" id="k-vac">—<span> h</span></div>
+      <div class="kpi-sub">time off logged</div>
+    </div>
+  </div>
+
+  <!-- TEAM HEAT MAP -->
+  <div class="card" style="margin-bottom:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="card-title" style="margin-bottom:0;">Team overview — click to filter</div>
+        <span class="info-btn" onclick="showTip(this,'Team Overview','Each card shows one team (identified by TL name). The colour indicates chargeability level: <strong>green ≥65%</strong>, <strong>amber 50–64%</strong>, <strong>red &lt;50%</strong>.<br><br>Click any card to filter all charts and tables to that team only. Click <em>All teams</em> in the filter bar to reset.','Chargeability % = Chargeable hours ÷ Net Capacity × 100\nNet Capacity = (people × 160h) − Vacation hours')">i</span>
+      </div>
+      <div class="legend">
+        <span><span class="ldot" style="background:var(--green)"></span>≥65%</span>
+        <span><span class="ldot" style="background:var(--amber)"></span>50–64%</span>
+        <span><span class="ldot" style="background:var(--red)"></span>&lt;50%</span>
+      </div>
+    </div>
+    <div class="heat-grid" id="heat-grid"></div>
+  </div>
+
+  <!-- CHARTS ROW 1 -->
+  <div class="chart-row">
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+        <div class="card-title" style="margin-bottom:0;">Monthly chargeability — selected teams avg</div>
+        <span class="info-btn" onclick="showTip(this,'Monthly Chargeability','Shows the average chargeability % per month for all selected teams (TLs excluded).<br><br>Use the <strong>Month</strong> filter to isolate a single month, or keep <em>All</em> for the full trend.<br><br>Colour coding: <strong>green ≥65%</strong>, <strong>amber 50–64%</strong>, <strong>red &lt;50%</strong>.','Formula per month:\nChargeability % = Σ Chargeable h ÷ Σ Net Capacity × 100\nNet Capacity = 160h − Vacation h per person')">i</span>
+      </div>
+      <div class="chart-wrap" style="height:210px;"><canvas id="ch-monthly"></canvas></div>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+        <div class="card-title" style="margin-bottom:0;">Team comparison — chargeability %</div>
+        <span class="info-btn" onclick="showTip(this,'Team Comparison','Compares the overall chargeability % across all selected teams for the chosen period.<br><br>Each bar represents one team (TL excluded from that team\'s calculation). Useful for spotting which teams are over- or under-allocated relative to others.','Formula per team:\nChargeability % = Σ Chargeable h ÷ Σ Net Capacity × 100\n(aggregated across all active months)')">i</span>
+      </div>
+      <div class="chart-wrap" style="height:210px;"><canvas id="ch-teams"></canvas></div>
+    </div>
+  </div>
+
+  <!-- CHARTS ROW 2 -->
+  <div class="chart-row">
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+        <div class="card-title" style="margin-bottom:0;">Hours breakdown — chargeable vs free time vs vacation</div>
+        <span class="info-btn" onclick="showTip(this,'Hours Breakdown','Stacked bar showing how total logged hours are distributed each month across three categories:<br><br><strong>Chargeable</strong> — hours logged on active client projects (Project # ≠ Admin).<br><strong>Free / Admin</strong> — hours logged as Admin but not vacation; includes meetings, training, idle time.<br><strong>Vacation</strong> — time off logged under tasks containing the word "Vacation".','Total capacity = 160h × number of people\nFree / Admin = Net Capacity − Chargeable\n(does NOT include vacation in the free time pool)')">i</span>
+      </div>
+      <div class="chart-wrap" style="height:210px;"><canvas id="ch-breakdown"></canvas></div>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+        <div class="card-title" style="margin-bottom:0;">Individual chargeability — selected team members</div>
+        <span class="info-btn" onclick="showTip(this,'Individual Chargeability','Horizontal bar chart showing chargeability % per person, sorted highest to lowest (max 20 shown).<br><br>A value <strong>above 100%</strong> means the person logged more chargeable hours than their net capacity — this is <strong>overtime</strong>. The data is accurate; it simply reflects more project hours than the standard monthly baseline allows.<br><br>TLs are excluded from this chart.','Formula per person:\nChargeability % = Chargeable h ÷ Net Capacity × 100\nNet Capacity = (months active × 160h) − Vacation h\n\n>100% = Overtime (chargeable > net capacity)')">i</span>
+      </div>
+      <div class="chart-wrap" style="height:210px;"><canvas id="ch-individual"></canvas></div>
+    </div>
+  </div>
+
+  <!-- INDIVIDUAL TABLE -->
+  <div class="table-card">
+    <div class="table-hdr">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="table-title">Individual performance</div>
+        <span class="info-btn" onclick="showTip(this,'Individual Performance Table','One row per team member. Columns explained:<br><br><strong>Net Cap</strong> — available working hours after subtracting vacation (160h/month baseline).<br><strong>Chargeable</strong> — hours logged on client projects.<br><strong>Vacation</strong> — time-off hours logged in iTime.<br><strong>Free Time</strong> — Net Cap minus Chargeable. Includes admin tasks and unlogged time. Negative = overtime.<br><strong>Chargeability %</strong> — how much of net capacity was spent on billable work.<br><strong>Free / Day</strong> — average free hours per working day in the period.<br><br><strong>OT badge</strong> = chargeability &gt;100% (overtime detected).','Net Capacity = (active months × 160h) − Vacation h\nFree Time = Net Capacity − Chargeable h\nChargeability % = Chargeable ÷ Net Capacity × 100\nFree / Day = Free Time ÷ working days in period')">i</span>
+      </div>
+      <div class="legend">
+        <span><span class="ldot" style="background:var(--green)"></span>High ≥65%</span>
+        <span><span class="ldot" style="background:var(--amber)"></span>Mid 50–64%</span>
+        <span><span class="ldot" style="background:var(--red)"></span>Low &lt;50%</span>
+        <span><span class="ldot" style="background:#c084fc"></span>OT &gt;100%</span>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Employee</th>
+          <th>Team (TL)</th>
+          <th>Net Cap (h)</th>
+          <th>Chargeable (h)</th>
+          <th>Vacation (h)</th>
+          <th>Free Time (h)</th>
+          <th>Chargeability %</th>
+          <th>Free / Day</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="ind-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- MONTHLY SUMMARY TABLE -->
+  <div class="table-card">
+    <div class="table-hdr">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="table-title">Monthly summary (excl. TLs)</div>
+        <span class="info-btn" onclick="showTip(this,'Monthly Summary Table','Aggregated view of team performance per calendar month. TLs are excluded from all calculations.<br><br><strong>People</strong> — number of non-TL team members with logged hours in that month.<br><strong>Net Cap</strong> — total available hours (160h × people − vacation).<br><strong>Chargeable</strong> — total billable project hours.<br><strong>Chargeability %</strong> — team-level chargeability for the month.<br><strong>Free Time</strong> — total non-billable hours (admin + idle).<br><strong>Avg Free / Day / Person</strong> — free time spread across working days and people.','Net Capacity = (people × 160h) − Σ Vacation h\nFree Time = Net Capacity − Chargeable h\nChargeability % = Chargeable ÷ Net Capacity × 100\nAvg Free/Day/Person = Free Time ÷ (people × working days)')">i</span>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Month</th><th>People</th><th>Net Cap (h)</th>
+          <th>Chargeable (h)</th><th>Chargeability %</th>
+          <th>Free Time (h)</th><th>Avg Free / Day / Person</th>
+        </tr>
+      </thead>
+      <tbody id="mon-tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="footer-note">Capacity = 160 h/month · Net Capacity = 160 h − Vacation · Free Time = Net Capacity − Chargeable · TLs excluded from team averages · OT = chargeability &gt;100%</div>
+</div>
+
+<script>
+// ─── TEAM CONFIG ────────────────────────────────────────────────────────────
+const TEAMS = [
+  {
+    tlFn: "Mihail", tlLn: "Yunchov", label: "Mihail Yunchov",
+    members: [
+      { fn: "Valentin", ln: "Tsonev" }, { fn: "Nikola", ln: "Gospodinov" },
+      { fn: "Nikolay", ln: "Nakov" }, { fn: "Tsvetin", ln: "Panov" },
+      { fn: "Ognyan", ln: "Goranov" }, { fn: "Bogdan", ln: "Rusev" },
+      { fn: "Aleksandrina", ln: "Kovachka" }, { fn: "Yoana", ln: "Atanasova" },
+      { fn: "Iliyan", ln: "Matsin" }, { fn: "Gabriel", ln: "Ganchev" },
+      { fn: "Svetoslav", ln: "Berberski" }
+    ]
+  },
+  {
+    tlFn: "Boris", tlLn: "Tashkov", label: "Boris Tashkov",
+    members: [
+      { fn: "Yanko", ln: "Stanchev" }, { fn: "Lidiya", ln: "Petrova" },
+      { fn: "Georgi", ln: "Peychev" }, { fn: "Angel", ln: "Pankovski" },
+      { fn: "Boyan", ln: "Boychev" }, { fn: "Emil", ln: "Mitov" },
+      { fn: "Aleksandar", ln: "Yachimov" }, { fn: "Silviya", ln: "Gelusheva" },
+      { fn: "Lazar", ln: "Lazarov" }
+    ]
+  },
+  {
+    tlFn: "Tsvetozar", tlLn: "Tonov", label: "Tsvetozar Tonov",
+    members: [
+      { fn: "Diana", ln: "Trifonova" }, { fn: "Valentina", ln: "Shopova - Ivanova" },
+      { fn: "Konstantin", ln: "Boev" }, { fn: "Deyan", ln: "Petkov" },
+      { fn: "Petar", ln: "Peev" }, { fn: "Damyan", ln: "Stoyanov" },
+      { fn: "Anzhela", ln: "Nurieva" }, { fn: "Stoyan", ln: "Dimitrov" }
+    ]
+  },
+  {
+    tlFn: "Darko", tlLn: "Ivanovski", label: "Darko Ivanovski",
+    members: [
+      { fn: "Elena", ln: "Rahova" }, { fn: "Severina", ln: "Stoyanova" },
+      { fn: "Velichko", ln: "Peev" }, { fn: "Martin", ln: "Dimitrov" },
+      { fn: "Nikola", ln: "Ganev" }, { fn: "Nikola", ln: "Diankov" },
+      { fn: "Veselin", ln: "Iskrenov" }, { fn: "Petar", ln: "Mitrevichin" }
+    ]
+  },
+  {
+    tlFn: "Ani", tlLn: "Chalakova", label: "Ani Chalakova",
+    members: [
+      { fn: "Stoyan", ln: "Stoyanov" }, { fn: "Emil", ln: "Penovski" },
+      { fn: "Yasen", ln: "Ivanov" }, { fn: "Monika", ln: "Ivanova" },
+      { fn: "Dimitar", ln: "Frantsuzov" }, { fn: "Stoyan", ln: "Boyadzhiev" },
+      { fn: "Mario", ln: "Tsvetanov" }, { fn: "Ivan", ln: "Rinkov" }
+    ]
+  },
+  {
+    tlFn: "Emil", tlLn: "Drumev", label: "Emil Drumev",
+    members: [
+      { fn: "Dafin", ln: "Dimitrov" }, { fn: "Katerina", ln: "Noteva" },
+      { fn: "Kristiyan", ln: "Karaychev" }, { fn: "Aleksandar", ln: "Aleksandrov" },
+      { fn: "Martin", ln: "Stefanov" }, { fn: "Dimitar", ln: "Dimov" }
+    ]
+  },
+  {
+    tlFn: "Adelina", tlLn: "Stefanova", label: "Adelina Stefanova",
+    members: [
+      { fn: "Martina", ln: "Markova" }, { fn: "Hristo", ln: "Stoyanov" },
+      { fn: "Lachezar", ln: "Petkov" }, { fn: "Katrin", ln: "Alnemri-Mratsenkova" },
+      { fn: "Slav", ln: "Pisarov" }, { fn: "Presiyan", ln: "Enchev" }
+    ]
+  },
+  {
+    tlFn: "Yoana", tlLn: "Radneva", label: "Yoana Radneva",
+    members: [
+      { fn: "Svilen", ln: "Petkov" }, { fn: "Bogdan", ln: "Petrov" },
+      { fn: "Hristian", ln: "Tsvetanov" }, { fn: "Daniel", ln: "Tsvetanov" },
+      { fn: "Veselin", ln: "Kadriev" }, { fn: "Mariya", ln: "Papazova" }
+    ]
+  },
+  {
+    tlFn: "Kiril", tlLn: "Paskov", label: "Kiril Paskov",
+    members: [
+      { fn: "Kamen", ln: "Dimitrov" }, { fn: "Denislav", ln: "Angelov" },
+      { fn: "David", ln: "Dimitrov" }, { fn: "Ivaylo", ln: "Rashev" },
+      { fn: "Evgeny", ln: "Kostadinov" }
+    ]
+  },
+  {
+    tlFn: "Hrisi", tlLn: "Nikolova", label: "Hrisi Nikolova",
+    members: [
+      { fn: "Mihael", ln: "Starchev" }, { fn: "Ivaylo", ln: "Ivanov" },
+      { fn: "Monika", ln: "Uzunova" }, { fn: "Monika", ln: "Petkova" }
+    ]
+  },
+];
+
+const WORKING_DAYS = {1:23,2:20,3:21,4:22,5:22,6:21,7:23,8:22,9:22,10:23,11:20,12:22};
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const TEAM_COLORS = ['#4f8ef7','#3ecf8e','#f5a623','#f26b6b','#2dd4bf','#a78bfa','#fb923c','#34d399','#e879f9','#60a5fa'];
+
+let allData = [];
+let activeMonths = new Set();
+let activeTeams = new Set(); // indices into TEAMS
+let charts = {};
+
+// Build lookup: "fn|ln" -> team index
+const personTeamMap = {};
+const tlSet = new Set();
+TEAMS.forEach((t, ti) => {
+  tlSet.add(t.tlFn + '|' + t.tlLn);
+  t.members.forEach(m => { personTeamMap[m.fn + '|' + m.ln] = ti; });
+});
+const allPersonKeys = new Set([...Object.keys(personTeamMap), ...tlSet]);
+
+// ─── FILE HANDLING ──────────────────────────────────────────────────────────
+document.getElementById('drop-zone').addEventListener('dragover', e => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); });
+document.getElementById('drop-zone').addEventListener('dragleave', e => e.currentTarget.classList.remove('drag-over'));
+document.getElementById('drop-zone').addEventListener('drop', e => { e.preventDefault(); e.currentTarget.classList.remove('drag-over'); if(e.dataTransfer.files[0]) parseFile(e.dataTransfer.files[0]); });
+document.getElementById('file-input').addEventListener('change', e => { if(e.target.files[0]) parseFile(e.target.files[0]); });
+
+function triggerReload() {
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('upload-zone').style.display = 'flex';
+}
+
+function parseFile(file) {
+  Papa.parse(file, {
+    header: true, skipEmptyLines: true, transformHeader: h => h.trim(),
+    complete: r => processData(r.data)
+  });
+}
+
+// ─── DATA PROCESSING ────────────────────────────────────────────────────────
+function processData(rows) {
+  allData = [];
+  for (const row of rows) {
+    const fn = (row['FName'] || '').trim();
+    const ln = (row['LName'] || '').trim();
+    const key = fn + '|' + ln;
+    if (!allPersonKeys.has(key)) continue;
+    const dateStr = (row['Date'] || '').trim();
+    const proj = (row['Project #'] || '').trim();
+    const task = (row['Task'] || '').trim();
+    const hours = parseFloat(row['Hours'] || 0) || 0;
+    const d = new Date(dateStr);
+    if (isNaN(d)) continue;
+    const month = d.getMonth() + 1, year = d.getFullYear();
+    const isVac = /vacation/i.test(task);
+    const isAdmin = proj.toLowerCase() === 'admin';
+    let cat = 'Chargeable';
+    if (isVac) cat = 'Vacation';
+    else if (isAdmin) cat = 'Admin';
+    allData.push({ fn, ln, key, month, year, hours, cat, teamIdx: personTeamMap[key] ?? -1, isTL: tlSet.has(key) });
+  }
+
+  if (!allData.length) { alert('No matching team members found.'); return; }
+
+  const ymSet = new Set(allData.map(r => r.year * 100 + r.month));
+  activeMonths = new Set(ymSet);
+  activeTeams = new Set(TEAMS.map((_, i) => i));
+
+  buildMonthFilters([...ymSet].sort());
+  buildTeamFilters();
+  update();
+  document.getElementById('upload-zone').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+}
+
+// ─── FILTER BUILDERS ────────────────────────────────────────────────────────
+function buildMonthFilters(yms) {
+  const c = document.getElementById('month-filters');
+  c.innerHTML = '';
+  const all = btn('All', true, 'all-active', () => { activeMonths = new Set(yms); syncMonthBtns(null); update(); });
+  c.appendChild(all);
+  yms.forEach(ym => {
+    const mo = ym % 100, yr = Math.floor(ym / 100);
+    const b = btn(MONTH_NAMES[mo-1] + ' ' + yr, false, '', () => { activeMonths = new Set([ym]); syncMonthBtns(ym); update(); });
+    b.dataset.ym = ym;
+    c.appendChild(b);
+  });
+}
+function syncMonthBtns(activeYm) {
+  document.querySelectorAll('#month-filters .f-btn').forEach(b => {
+    b.classList.remove('active','all-active');
+    if (b.dataset.ym) { if (parseInt(b.dataset.ym) === activeYm) b.classList.add('active'); }
+    else { if (activeYm === null) b.classList.add('all-active'); }
+  });
+}
+
+function buildTeamFilters() {
+  const c = document.getElementById('team-filters');
+  c.innerHTML = '';
+  const all = btn('All teams', true, 'all-active', () => { activeTeams = new Set(TEAMS.map((_,i)=>i)); syncTeamBtns(null); update(); });
+  c.appendChild(all);
+  TEAMS.forEach((t, ti) => {
+    const b = btn(t.tlLn, false, '', () => { activeTeams = new Set([ti]); syncTeamBtns(ti); update(); });
+    b.dataset.ti = ti;
+    c.appendChild(b);
+  });
+}
+function syncTeamBtns(activeTi) {
+  document.querySelectorAll('#team-filters .f-btn').forEach(b => {
+    b.classList.remove('active','all-active');
+    if (b.dataset.ti !== undefined) { if (parseInt(b.dataset.ti) === activeTi) b.classList.add('active'); }
+    else { if (activeTi === null) b.classList.add('all-active'); }
+  });
+}
+
+function btn(label, isActive, activeClass, onclick) {
+  const b = document.createElement('button');
+  b.className = 'f-btn' + (isActive ? ' ' + activeClass : '');
+  b.textContent = label;
+  b.onclick = onclick;
+  return b;
+}
+
+// ─── MAIN UPDATE ────────────────────────────────────────────────────────────
+function update() {
+  const filtered = allData.filter(r =>
+    activeMonths.has(r.year * 100 + r.month) &&
+    (r.isTL ? activeTeams.has(personTeamMap[r.key] ?? r.teamIdx) || [...activeTeams].some(ti => TEAMS[ti].tlFn + '|' + TEAMS[ti].tlLn === r.key) : activeTeams.has(r.teamIdx))
+  );
+
+  // Fix TL filtering
+  const filteredFull = allData.filter(r => {
+    if (!activeMonths.has(r.year * 100 + r.month)) return false;
+    if (r.isTL) {
+      const tlTeamIdx = TEAMS.findIndex(t => t.tlFn + '|' + t.tlLn === r.key);
+      return activeTeams.has(tlTeamIdx);
+    }
+    return activeTeams.has(r.teamIdx);
+  });
+
+  // Per person stats
+  const personStats = {}; // key -> { fn, ln, isTL, teamIdx, months, ch, vac, adm }
+  for (const r of filteredFull) {
+    if (!personStats[r.key]) personStats[r.key] = { fn: r.fn, ln: r.ln, isTL: r.isTL, teamIdx: r.teamIdx, months: new Set(), ch: 0, vac: 0, adm: 0 };
+    const p = personStats[r.key];
+    p.months.add(r.year * 100 + r.month);
+    if (r.cat === 'Chargeable') p.ch += r.hours;
+    else if (r.cat === 'Vacation') p.vac += r.hours;
+    else p.adm += r.hours;
+  }
+  for (const p of Object.values(personStats)) {
+    p.cap = p.months.size * 160;
+    p.netCap = p.cap - p.vac;
+    p.free = p.netCap - p.ch;
+    p.pct = p.netCap > 0 ? p.ch / p.netCap * 100 : 0;
+    let wd = 0;
+    for (const ym of p.months) wd += WORKING_DAYS[ym % 100] || 20;
+    p.wd = wd;
+    p.fpd = wd > 0 ? p.free / wd : 0;
+  }
+
+  // Monthly breakdown (excl TLs, active teams)
+  const monthMap = {};
+  for (const ym of [...activeMonths].sort()) monthMap[ym] = { ch: 0, vac: 0, netCap: 0, people: new Set() };
+  for (const r of filteredFull) {
+    if (r.isTL) continue;
+    const ym = r.year * 100 + r.month;
+    if (!monthMap[ym]) continue;
+    if (r.cat === 'Chargeable') monthMap[ym].ch += r.hours;
+    else if (r.cat === 'Vacation') monthMap[ym].vac += r.hours;
+    monthMap[ym].people.add(r.key);
+  }
+  for (const m of Object.values(monthMap)) {
+    m.n = m.people.size;
+    m.netCap = m.n * 160 - m.vac;
+    m.free = m.netCap - m.ch;
+    m.pct = m.netCap > 0 ? m.ch / m.netCap * 100 : 0;
+  }
+
+  // Team summary (excl TLs)
+  const teamStats = {};
+  TEAMS.forEach((t, ti) => { if (activeTeams.has(ti)) teamStats[ti] = { ch: 0, vac: 0, netCap: 0, people: new Set() }; });
+  for (const r of filteredFull) {
+    if (r.isTL || !activeTeams.has(r.teamIdx)) continue;
+    if (!teamStats[r.teamIdx]) continue;
+    if (r.cat === 'Chargeable') teamStats[r.teamIdx].ch += r.hours;
+    else if (r.cat === 'Vacation') teamStats[r.teamIdx].vac += r.hours;
+    teamStats[r.teamIdx].people.add(r.key);
+  }
+  for (const ts of Object.values(teamStats)) {
+    ts.n = ts.people.size;
+    ts.netCap = ts.n * 160 * (activeMonths.size) - ts.vac;
+    // recalc from person data
+    ts.netCap = 0; ts.ch = 0; ts.vac = 0;
+  }
+  // Redo from person stats
+  for (const [key, p] of Object.entries(personStats)) {
+    if (p.isTL || !activeTeams.has(p.teamIdx)) continue;
+    if (!teamStats[p.teamIdx]) continue;
+    teamStats[p.teamIdx].ch += p.ch;
+    teamStats[p.teamIdx].vac += p.vac;
+    teamStats[p.teamIdx].netCap += p.netCap;
+    teamStats[p.teamIdx].people.add(key);
+  }
+  for (const ts of Object.values(teamStats)) {
+    ts.n = ts.people.size;
+    ts.free = ts.netCap - ts.ch;
+    ts.pct = ts.netCap > 0 ? ts.ch / ts.netCap * 100 : 0;
+  }
+
+  updateKPIs(personStats);
+  updateHeatGrid(teamStats);
+  updateCharts(monthMap, teamStats, personStats);
+  updateIndTable(personStats);
+  updateMonTable(monthMap);
+  updatePeriodBadge();
+}
+
+function updatePeriodBadge() {
+  const yms = [...activeMonths].sort();
+  if (!yms.length) { document.getElementById('period-badge').textContent = 'No data'; return; }
+  const f = yms[0], l = yms[yms.length-1];
+  document.getElementById('period-badge').textContent = f === l
+    ? MONTH_NAMES[(f%100)-1] + ' ' + Math.floor(f/100)
+    : MONTH_NAMES[(f%100)-1] + ' – ' + MONTH_NAMES[(l%100)-1] + ' ' + Math.floor(l/100);
+}
+
+function updateKPIs(ps) {
+  let ch=0, nc=0, free=0, vac=0, wd=0;
+  for (const p of Object.values(ps)) {
+    if (p.isTL) continue;
+    ch += p.ch; nc += p.netCap; free += p.free; vac += p.vac; wd += p.wd;
+  }
+  const pct = nc > 0 ? ch/nc*100 : 0;
+  document.getElementById('k-charge').innerHTML = pct.toFixed(1) + '<span>%</span>';
+  document.getElementById('k-proj').innerHTML = Math.round(ch) + '<span> h</span>';
+  document.getElementById('k-free').innerHTML = Math.round(free) + '<span> h</span>';
+  document.getElementById('k-fpd').innerHTML = (wd > 0 ? free/wd : 0).toFixed(2) + '<span> h</span>';
+  document.getElementById('k-vac').innerHTML = Math.round(vac) + '<span> h</span>';
+}
+
+function bc(pct) { return pct >= 65 ? '#3ecf8e' : pct >= 50 ? '#f5a623' : '#f26b6b'; }
+
+function updateHeatGrid(ts) {
+  const g = document.getElementById('heat-grid');
+  g.innerHTML = '';
+  TEAMS.forEach((t, ti) => {
+    if (!activeTeams.has(ti)) return;
+    const s = ts[ti] || {};
+    const pct = s.pct || 0;
+    const col = bc(pct);
+    const cell = document.createElement('div');
+    cell.className = 'heat-cell';
+    cell.style.setProperty('--c', col);
+    cell.innerHTML = `<div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:${col};border-radius:3px 0 0 3px;"></div>
+      <div class="heat-cell-name">${t.tlLn}</div>
+      <div class="heat-cell-sub">${t.tlFn} · ${s.n||0} people</div>
+      <div class="heat-cell-pct" style="color:${col}">${pct.toFixed(1)}<span style="font-size:12px;color:var(--text2)">%</span></div>`;
+    cell.onclick = () => {
+      activeTeams = new Set([ti]);
+      syncTeamBtns(ti);
+      update();
+    };
+    g.appendChild(cell);
+  });
+}
+
+function destroyChart(id) { if (charts[id]) { charts[id].destroy(); charts[id] = null; } }
+
+function updateCharts(monthMap, teamStats, personStats) {
+  const yms = Object.keys(monthMap).map(Number).sort();
+  const mLabels = yms.map(ym => MONTH_NAMES[(ym%100)-1]);
+  const mPcts = yms.map(ym => +(monthMap[ym].pct||0).toFixed(1));
+  const mCh = yms.map(ym => Math.round(monthMap[ym].ch||0));
+  const mFree = yms.map(ym => Math.round(monthMap[ym].free||0));
+  const mVac = yms.map(ym => Math.round(monthMap[ym].vac||0));
+
+  // Chart 1: Monthly chargeability
+  destroyChart('ch-monthly');
+  charts['ch-monthly'] = new Chart(document.getElementById('ch-monthly'), {
+    type: 'bar',
+    data: {
+      labels: mLabels,
+      datasets: [{
+        label: 'Chargeability %', data: mPcts,
+        backgroundColor: mPcts.map(v => v>=65?'rgba(62,207,142,.7)':v>=50?'rgba(245,166,35,.7)':'rgba(242,107,107,.7)'),
+        borderColor: mPcts.map(v => bc(v)), borderWidth: 1, borderRadius: 5,
+      }]
+    },
+    options: chartOpts('y', v => v + '%', 0, 100)
+  });
+
+  // Chart 2: Team comparison
+  const activeTeamList = TEAMS.map((t,ti) => ({t,ti})).filter(({ti}) => activeTeams.has(ti));
+  destroyChart('ch-teams');
+  charts['ch-teams'] = new Chart(document.getElementById('ch-teams'), {
+    type: 'bar',
+    data: {
+      labels: activeTeamList.map(({t}) => t.tlLn),
+      datasets: [{
+        label: '%', data: activeTeamList.map(({ti}) => +((teamStats[ti]?.pct||0).toFixed(1))),
+        backgroundColor: activeTeamList.map(({ti}) => { const p=teamStats[ti]?.pct||0; return p>=65?'rgba(62,207,142,.7)':p>=50?'rgba(245,166,35,.7)':'rgba(242,107,107,.7)'; }),
+        borderColor: activeTeamList.map(({ti}) => bc(teamStats[ti]?.pct||0)), borderWidth: 1, borderRadius: 5,
+      }]
+    },
+    options: chartOpts('y', v => v + '%', 0, 100)
+  });
+
+  // Chart 3: Stacked breakdown
+  destroyChart('ch-breakdown');
+  charts['ch-breakdown'] = new Chart(document.getElementById('ch-breakdown'), {
+    type: 'bar',
+    data: {
+      labels: mLabels,
+      datasets: [
+        { label: 'Chargeable', data: mCh, backgroundColor: 'rgba(62,207,142,.7)', borderRadius: 3 },
+        { label: 'Free / Admin', data: mFree, backgroundColor: 'rgba(79,142,247,.5)', borderRadius: 3 },
+        { label: 'Vacation', data: mVac, backgroundColor: 'rgba(245,166,35,.5)', borderRadius: 3 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: true, labels: { color: '#8e90a0', font: { family: 'DM Mono', size: 10 }, boxWidth: 10, padding: 12 } } },
+      scales: {
+        x: { stacked: true, ticks: { color: '#4e5060', font: { family: 'DM Mono', size: 10 } }, grid: { color: 'rgba(255,255,255,.04)' } },
+        y: { stacked: true, ticks: { color: '#4e5060', font: { family: 'DM Mono', size: 10 } }, grid: { color: 'rgba(255,255,255,.04)' } }
+      }
+    }
+  });
+
+  // Chart 4: Individual horizontal bar (non-TL only, max 20)
+  const indPeople = Object.values(personStats).filter(p => !p.isTL).sort((a,b) => b.pct - a.pct).slice(0, 20);
+  destroyChart('ch-individual');
+  const indH = Math.max(210, indPeople.length * 22 + 40);
+  document.getElementById('ch-individual').parentElement.style.height = indH + 'px';
+  charts['ch-individual'] = new Chart(document.getElementById('ch-individual'), {
+    type: 'bar',
+    data: {
+      labels: indPeople.map(p => p.fn.charAt(0) + '. ' + p.ln),
+      datasets: [{
+        label: '%', data: indPeople.map(p => +p.pct.toFixed(1)),
+        backgroundColor: indPeople.map(p => p.pct>=65?'rgba(62,207,142,.7)':p.pct>=50?'rgba(245,166,35,.7)':'rgba(242,107,107,.7)'),
+        borderColor: indPeople.map(p => bc(p.pct)), borderWidth: 1, borderRadius: 4,
+      }]
+    },
+    options: {
+      ...chartOpts('x', v => v + '%', 0, 100),
+      indexAxis: 'y',
+      scales: {
+        x: { min:0, max:100, ticks:{color:'#4e5060',font:{family:'DM Mono',size:10},callback:v=>v+'%'}, grid:{color:'rgba(255,255,255,.04)'} },
+        y: { ticks:{color:'#8e90a0',font:{family:'DM Mono',size:10}}, grid:{color:'rgba(255,255,255,.04)'} }
+      }
+    }
+  });
+}
+
+function chartOpts(axis, tickFmt, min, max) {
+  const scaleKey = axis === 'y' ? 'y' : 'x';
+  return {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + ctx.parsed[axis === 'y' ? 'y' : 'x'] + (tickFmt ? '' : '') } } },
+    scales: {
+      x: { ticks:{color:'#4e5060',font:{family:'DM Mono',size:10},...(axis==='y'?{}:{callback:tickFmt}),...(axis==='y'?{}:(min!==undefined?{min,max}:{}))}, grid:{color:'rgba(255,255,255,.04)'} },
+      y: { ticks:{color:'#4e5060',font:{family:'DM Mono',size:10},...(axis==='x'?{}:{callback:tickFmt}),...(axis==='x'?{}:(min!==undefined?{min,max}:{}))}, grid:{color:'rgba(255,255,255,.04)'} }
+    }
+  };
+}
+
+function tag(pct, isTL) {
+  if (isTL) return '<span class="tag tag-tl">TL</span>';
+  if (pct > 100) return '<span class="tag tag-ot">OT</span>';
+  if (pct >= 65) return '<span class="tag tag-h">High</span>';
+  if (pct >= 50) return '<span class="tag tag-m">Mid</span>';
+  return '<span class="tag tag-l">Low</span>';
+}
+
+// ─── TOOLTIP ────────────────────────────────────────────────────────────────
+const tipBox = document.getElementById('tooltip-box');
+let tipVisible = false;
+
+function showTip(btn, title, body, formula) {
+  const rect = btn.getBoundingClientRect();
+  tipBox.innerHTML = `<div class="tooltip-title">${title}</div>
+    <div class="tooltip-body">${body}</div>
+    ${formula ? `<div class="tooltip-formula">${formula.replace(/\n/g,'<br>')}</div>` : ''}`;
+  tipBox.classList.add('visible');
+  tipVisible = true;
+  // Position: prefer right of button, clamp to viewport
+  let left = rect.right + 10;
+  let top = rect.top;
+  const tw = 340, th = tipBox.offsetHeight || 200;
+  if (left + tw > window.innerWidth - 10) left = rect.left - tw - 10;
+  if (top + th > window.innerHeight - 10) top = window.innerHeight - th - 10;
+  if (top < 10) top = 10;
+  tipBox.style.left = left + 'px';
+  tipBox.style.top = top + 'px';
+}
+
+document.addEventListener('click', e => {
+  if (tipVisible && !e.target.classList.contains('info-btn')) {
+    tipBox.classList.remove('visible');
+    tipVisible = false;
+  }
+});
+
+function updateIndTable(ps) {
+  const tbody = document.getElementById('ind-tbody');
+  const sorted = Object.values(ps).filter(p => p.months.size > 0).sort((a,b) => {
+    if (a.isTL !== b.isTL) return a.isTL ? 1 : -1;
+    return b.pct - a.pct;
+  });
+  let html = '';
+  let tlSep = false;
+  for (const p of sorted) {
+    if (p.isTL && !tlSep) {
+      html += `<tr><td colspan="9" style="padding:4px 18px;background:var(--bg3);font-size:10px;color:var(--text3);font-family:var(--mono);">— Team Leads (excluded from averages) —</td></tr>`;
+      tlSep = true;
+    }
+    const tlIdx = TEAMS.findIndex(t => t.tlFn + '|' + t.tlLn === p.fn + '|' + p.ln);
+    const teamLabel = p.isTL ? TEAMS[tlIdx]?.label || '' : TEAMS[p.teamIdx]?.label || '';
+    const barW = Math.min(p.pct, 100).toFixed(1);
+    html += `<tr class="${p.isTL ? 'tl-row' : ''}">
+      <td class="bold">${p.fn} ${p.ln}</td>
+      <td style="font-size:11px;color:var(--text2);">${teamLabel}</td>
+      <td class="mono">${Math.round(p.netCap)}</td>
+      <td class="mono">${(Math.round(p.ch*10)/10).toFixed(1)}</td>
+      <td class="mono">${Math.round(p.vac)}</td>
+      <td class="mono">${(Math.round(p.free*10)/10).toFixed(1)}</td>
+      <td>
+        <div class="bar-wrap">
+          <div class="bar-bg"><div class="bar-fill" style="width:${barW}%;background:${bc(p.pct)};"></div></div>
+          <span class="pv" style="color:${bc(p.pct)}">${p.pct.toFixed(1)}%</span>
+        </div>
+      </td>
+      <td class="mono">${p.fpd.toFixed(2)} h</td>
+      <td>${tag(p.pct, p.isTL)}</td>
+    </tr>`;
+  }
+  tbody.innerHTML = html;
+}
+
+function updateMonTable(monthMap) {
+  const tbody = document.getElementById('mon-tbody');
+  const yms = Object.keys(monthMap).map(Number).sort();
+  let html = '', totCh=0, totNc=0, totFr=0;
+  for (const ym of yms) {
+    const m = monthMap[ym], mo = ym%100, yr = Math.floor(ym/100);
+    const wd = WORKING_DAYS[mo] || 20;
+    const fpd = m.n > 0 && wd > 0 ? m.free / (m.n * wd) : 0;
+    totCh += m.ch; totNc += m.netCap; totFr += m.free;
+    const barW = Math.min(m.pct, 100).toFixed(1);
+    html += `<tr>
+      <td><span style="font-family:var(--mono);font-size:10px;background:var(--bg4);padding:2px 8px;border-radius:4px;">${MONTH_NAMES[mo-1]} ${yr}</span></td>
+      <td class="mono">${m.n}</td>
+      <td class="mono">${Math.round(m.netCap)}</td>
+      <td class="mono">${(Math.round(m.ch*10)/10).toFixed(1)}</td>
+      <td>
+        <div class="bar-wrap">
+          <div class="bar-bg"><div class="bar-fill" style="width:${barW}%;background:${bc(m.pct)};"></div></div>
+          <span class="pv" style="color:${bc(m.pct)}">${m.pct.toFixed(1)}%</span>
+        </div>
+      </td>
+      <td class="mono">${(Math.round(m.free*10)/10).toFixed(1)}</td>
+      <td class="mono">${fpd.toFixed(2)} h</td>
+    </tr>`;
+  }
+  if (yms.length > 1) {
+    const ap = totNc > 0 ? totCh/totNc*100 : 0;
+    html += `<tr style="font-weight:500;background:var(--bg3);">
+      <td style="font-size:10px;color:var(--text2);font-family:var(--mono);">Average</td><td class="mono">—</td>
+      <td class="mono">${Math.round(totNc/yms.length)}</td>
+      <td class="mono">${(Math.round(totCh/yms.length*10)/10).toFixed(1)}</td>
+      <td>
+        <div class="bar-wrap">
+          <div class="bar-bg"><div class="bar-fill" style="width:${Math.min(ap,100).toFixed(1)}%;background:${bc(ap)};"></div></div>
+          <span class="pv" style="color:${bc(ap)}">${ap.toFixed(1)}%</span>
+        </div>
+      </td>
+      <td class="mono">${(Math.round(totFr/yms.length*10)/10).toFixed(1)}</td>
+      <td class="mono">—</td>
+    </tr>`;
+  }
+  tbody.innerHTML = html;
+}
+</script>
+</body>
+</html>
