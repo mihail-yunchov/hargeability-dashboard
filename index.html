@@ -224,6 +224,9 @@
     <div class="filter-sep"></div>
     <span class="filter-label">Team</span>
     <div id="team-filters" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+    <div class="filter-sep" id="person-sep" style="display:none;"></div>
+    <span class="filter-label" id="person-label" style="display:none;">Person</span>
+    <div id="person-filters" style="display:none;gap:6px;flex-wrap:wrap;"></div>
     <button class="reload-btn" onclick="triggerReload()">↑ New file</button>
   </div>
 
@@ -295,7 +298,7 @@
     <div class="card">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
         <div class="card-title" style="margin-bottom:0;">Hours breakdown — chargeable vs free time vs vacation</div>
-        <span class="info-btn" onclick="showTip(this,'Hours Breakdown','Stacked bar showing how total logged hours are distributed each month across three categories:<br><br><strong>Chargeable</strong> — hours logged on active client projects (Project # ≠ Admin).<br><strong>Free / Admin</strong> — hours logged as Admin but not vacation; includes meetings, training, idle time.<br><strong>Vacation</strong> — time off logged under tasks containing the word "Vacation".','Total capacity = 160h × number of people\nFree / Admin = Net Capacity − Chargeable\n(does NOT include vacation in the free time pool)')">i</span>
+        <span class="info-btn" onclick="showTip(this,'Hours Breakdown','Stacked bar showing how total logged hours are distributed each month across three categories:<br><br><strong>Chargeable</strong> — hours logged on active client projects (billable work).<br><strong>Free / Admin</strong> — hours logged as Admin, On Bench (GOH BG On Bench: 18-069151-01 / -02), or other non-chargeable time; includes meetings, training, idle time.<br><strong>Vacation</strong> — time off logged under tasks containing the word "Vacation".','Total capacity = 160h × number of people\nFree / Admin = Net Capacity − Chargeable\n(does NOT include vacation in the free time pool)')">i</span>
       </div>
       <div class="chart-wrap" style="height:210px;"><canvas id="ch-breakdown"></canvas></div>
     </div>
@@ -459,9 +462,17 @@ const WORKING_DAYS = {1:23,2:20,3:21,4:22,5:22,6:21,7:23,8:22,9:22,10:23,11:20,1
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const TEAM_COLORS = ['#4f8ef7','#3ecf8e','#f5a623','#f26b6b','#2dd4bf','#a78bfa','#fb923c','#34d399','#e879f9','#60a5fa'];
 
+// Non-chargeable project codes — treated as free/admin time, not billable
+// Add new codes here when the business flags additional non-chargeable projects.
+const NON_CHARGEABLE_PROJECTS = new Set([
+  '18-069151-01',  // GOH BG On Bench (variant 1)
+  '18-069151-02',  // GOH BG On Bench (variant 2)
+]);
+
 let allData = [];
 let activeMonths = new Set();
 let activeTeams = new Set(); // indices into TEAMS
+let activePerson = null; // person key "fn|ln" or null for all
 let charts = {};
 
 // Build lookup: "fn|ln" -> team index
@@ -508,9 +519,10 @@ function processData(rows) {
     const month = d.getMonth() + 1, year = d.getFullYear();
     const isVac = /vacation/i.test(task);
     const isAdmin = proj.toLowerCase() === 'admin';
+    const isOnBench = NON_CHARGEABLE_PROJECTS.has(proj);
     let cat = 'Chargeable';
     if (isVac) cat = 'Vacation';
-    else if (isAdmin) cat = 'Admin';
+    else if (isAdmin || isOnBench) cat = 'Admin';
     allData.push({ fn, ln, key, month, year, hours, cat, teamIdx: personTeamMap[key] ?? -1, isTL: tlSet.has(key) });
   }
 
@@ -528,33 +540,70 @@ function processData(rows) {
 }
 
 // ─── FILTER BUILDERS ────────────────────────────────────────────────────────
+let allMonths = []; // cached for rebuilds
+
 function buildMonthFilters(yms) {
+  allMonths = yms;
   const c = document.getElementById('month-filters');
   c.innerHTML = '';
-  const all = btn('All', true, 'all-active', () => { activeMonths = new Set(yms); syncMonthBtns(null); update(); });
+  // "All" toggle
+  const all = btn('All', true, 'all-active', () => {
+    activeMonths = new Set(allMonths);
+    syncMonthBtns();
+    update();
+  });
+  all.dataset.ymAll = '1';
   c.appendChild(all);
+  // Individual month toggles — multi-select
   yms.forEach(ym => {
     const mo = ym % 100, yr = Math.floor(ym / 100);
-    const b = btn(MONTH_NAMES[mo-1] + ' ' + yr, false, '', () => { activeMonths = new Set([ym]); syncMonthBtns(ym); update(); });
+    const b = btn(MONTH_NAMES[mo-1] + ' ' + yr, false, '', () => {
+      // Toggle this month in/out
+      if (activeMonths.has(ym)) {
+        activeMonths.delete(ym);
+        // Don't allow empty selection — if empty, revert to all
+        if (activeMonths.size === 0) activeMonths = new Set(allMonths);
+      } else {
+        activeMonths.add(ym);
+      }
+      syncMonthBtns();
+      update();
+    });
     b.dataset.ym = ym;
     c.appendChild(b);
   });
 }
-function syncMonthBtns(activeYm) {
+function syncMonthBtns() {
+  const allSelected = activeMonths.size === allMonths.length;
   document.querySelectorAll('#month-filters .f-btn').forEach(b => {
     b.classList.remove('active','all-active');
-    if (b.dataset.ym) { if (parseInt(b.dataset.ym) === activeYm) b.classList.add('active'); }
-    else { if (activeYm === null) b.classList.add('all-active'); }
+    if (b.dataset.ymAll) {
+      if (allSelected) b.classList.add('all-active');
+    } else if (b.dataset.ym) {
+      if (activeMonths.has(parseInt(b.dataset.ym))) b.classList.add('active');
+    }
   });
 }
 
 function buildTeamFilters() {
   const c = document.getElementById('team-filters');
   c.innerHTML = '';
-  const all = btn('All teams', true, 'all-active', () => { activeTeams = new Set(TEAMS.map((_,i)=>i)); syncTeamBtns(null); update(); });
+  const all = btn('All teams', true, 'all-active', () => {
+    activeTeams = new Set(TEAMS.map((_,i)=>i));
+    activePerson = null;
+    hidePersonFilter();
+    syncTeamBtns(null);
+    update();
+  });
   c.appendChild(all);
   TEAMS.forEach((t, ti) => {
-    const b = btn(t.tlLn, false, '', () => { activeTeams = new Set([ti]); syncTeamBtns(ti); update(); });
+    const b = btn(t.tlLn, false, '', () => {
+      activeTeams = new Set([ti]);
+      activePerson = null;
+      buildPersonFilters(ti);
+      syncTeamBtns(ti);
+      update();
+    });
     b.dataset.ti = ti;
     c.appendChild(b);
   });
@@ -564,6 +613,68 @@ function syncTeamBtns(activeTi) {
     b.classList.remove('active','all-active');
     if (b.dataset.ti !== undefined) { if (parseInt(b.dataset.ti) === activeTi) b.classList.add('active'); }
     else { if (activeTi === null) b.classList.add('all-active'); }
+  });
+}
+
+function hidePersonFilter() {
+  document.getElementById('person-sep').style.display = 'none';
+  document.getElementById('person-label').style.display = 'none';
+  document.getElementById('person-filters').style.display = 'none';
+}
+
+function buildPersonFilters(teamIdx) {
+  const team = TEAMS[teamIdx];
+  const c = document.getElementById('person-filters');
+  c.innerHTML = '';
+
+  // Show row
+  document.getElementById('person-sep').style.display = 'block';
+  document.getElementById('person-label').style.display = 'inline';
+  c.style.display = 'flex';
+
+  // "All" toggle
+  const all = btn('All', true, 'all-active', () => {
+    activePerson = null;
+    syncPersonBtns(null);
+    update();
+  });
+  all.dataset.personAll = '1';
+  c.appendChild(all);
+
+  // TL chip (blue accent)
+  const tlKey = team.tlFn + '|' + team.tlLn;
+  const tlBtn = btn(team.tlLn + ' (TL)', false, '', () => {
+    activePerson = tlKey;
+    syncPersonBtns(tlKey);
+    update();
+  });
+  tlBtn.dataset.personKey = tlKey;
+  tlBtn.style.borderColor = 'rgba(79,142,247,0.3)';
+  tlBtn.style.color = '#a8c7ff';
+  c.appendChild(tlBtn);
+
+  // Each member
+  team.members.forEach(m => {
+    const key = m.fn + '|' + m.ln;
+    const label = m.fn.charAt(0) + '. ' + m.ln;
+    const b = btn(label, false, '', () => {
+      activePerson = key;
+      syncPersonBtns(key);
+      update();
+    });
+    b.dataset.personKey = key;
+    c.appendChild(b);
+  });
+}
+
+function syncPersonBtns(activeKey) {
+  document.querySelectorAll('#person-filters .f-btn').forEach(b => {
+    b.classList.remove('active','all-active');
+    if (b.dataset.personAll) {
+      if (activeKey === null) b.classList.add('all-active');
+    } else if (b.dataset.personKey) {
+      if (b.dataset.personKey === activeKey) b.classList.add('active');
+    }
   });
 }
 
@@ -577,14 +688,11 @@ function btn(label, isActive, activeClass, onclick) {
 
 // ─── MAIN UPDATE ────────────────────────────────────────────────────────────
 function update() {
-  const filtered = allData.filter(r =>
-    activeMonths.has(r.year * 100 + r.month) &&
-    (r.isTL ? activeTeams.has(personTeamMap[r.key] ?? r.teamIdx) || [...activeTeams].some(ti => TEAMS[ti].tlFn + '|' + TEAMS[ti].tlLn === r.key) : activeTeams.has(r.teamIdx))
-  );
-
-  // Fix TL filtering
+  // Fix TL filtering + optional person filter
   const filteredFull = allData.filter(r => {
     if (!activeMonths.has(r.year * 100 + r.month)) return false;
+    // If a single person is selected, only their rows pass
+    if (activePerson && r.key !== activePerson) return false;
     if (r.isTL) {
       const tlTeamIdx = TEAMS.findIndex(t => t.tlFn + '|' + t.tlLn === r.key);
       return activeTeams.has(tlTeamIdx);
@@ -613,11 +721,12 @@ function update() {
     p.fpd = wd > 0 ? p.free / wd : 0;
   }
 
-  // Monthly breakdown (excl TLs, active teams)
+  // Monthly breakdown (excl TLs unless a TL is explicitly the selected person)
   const monthMap = {};
   for (const ym of [...activeMonths].sort()) monthMap[ym] = { ch: 0, vac: 0, netCap: 0, people: new Set() };
   for (const r of filteredFull) {
-    if (r.isTL) continue;
+    // Include TL only when they are the explicitly selected person
+    if (r.isTL && !(activePerson && r.key === activePerson)) continue;
     const ym = r.year * 100 + r.month;
     if (!monthMap[ym]) continue;
     if (r.cat === 'Chargeable') monthMap[ym].ch += r.hours;
@@ -672,17 +781,31 @@ function update() {
 
 function updatePeriodBadge() {
   const yms = [...activeMonths].sort();
-  if (!yms.length) { document.getElementById('period-badge').textContent = 'No data'; return; }
+  const badge = document.getElementById('period-badge');
+  if (!yms.length) { badge.textContent = 'No data'; return; }
+  // Check if selection is contiguous
+  let contiguous = true;
+  for (let i = 1; i < yms.length; i++) {
+    const prev = yms[i-1], cur = yms[i];
+    const prevMo = prev % 100, prevYr = Math.floor(prev / 100);
+    const expected = prevMo === 12 ? (prevYr + 1) * 100 + 1 : prev + 1;
+    if (cur !== expected) { contiguous = false; break; }
+  }
   const f = yms[0], l = yms[yms.length-1];
-  document.getElementById('period-badge').textContent = f === l
-    ? MONTH_NAMES[(f%100)-1] + ' ' + Math.floor(f/100)
-    : MONTH_NAMES[(f%100)-1] + ' – ' + MONTH_NAMES[(l%100)-1] + ' ' + Math.floor(l/100);
+  if (yms.length === 1) {
+    badge.textContent = MONTH_NAMES[(f%100)-1] + ' ' + Math.floor(f/100);
+  } else if (contiguous) {
+    badge.textContent = MONTH_NAMES[(f%100)-1] + ' – ' + MONTH_NAMES[(l%100)-1] + ' ' + Math.floor(l/100);
+  } else {
+    badge.textContent = yms.length + ' months selected';
+  }
 }
 
 function updateKPIs(ps) {
   let ch=0, nc=0, free=0, vac=0, wd=0;
   for (const p of Object.values(ps)) {
-    if (p.isTL) continue;
+    // Include TL only when they are the explicitly selected person
+    if (p.isTL && !(activePerson && (p.fn + '|' + p.ln) === activePerson)) continue;
     ch += p.ch; nc += p.netCap; free += p.free; vac += p.vac; wd += p.wd;
   }
   const pct = nc > 0 ? ch/nc*100 : 0;
@@ -691,6 +814,17 @@ function updateKPIs(ps) {
   document.getElementById('k-free').innerHTML = Math.round(free) + '<span> h</span>';
   document.getElementById('k-fpd').innerHTML = (wd > 0 ? free/wd : 0).toFixed(2) + '<span> h</span>';
   document.getElementById('k-vac').innerHTML = Math.round(vac) + '<span> h</span>';
+
+  // Update KPI subtitle to show context
+  const sub = document.getElementById('k-charge-sub');
+  if (sub) {
+    if (activePerson) {
+      const [fn, ln] = activePerson.split('|');
+      sub.textContent = `${fn} ${ln} only`;
+    } else {
+      sub.textContent = 'selected teams excl. TL';
+    }
+  }
 }
 
 function bc(pct) { return pct >= 65 ? '#3ecf8e' : pct >= 50 ? '#f5a623' : '#f26b6b'; }
