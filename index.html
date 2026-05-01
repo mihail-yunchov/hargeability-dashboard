@@ -75,6 +75,14 @@
   .f-btn.all-active { background: var(--bg4); border-color: var(--border2); color: var(--text); }
   .reload-btn { margin-left: auto; font-size: 12px; padding: 5px 14px; background: transparent; border: 1px solid var(--border2); border-radius: 5px; color: var(--text2); cursor: pointer; }
   .reload-btn:hover { color: var(--text); border-color: var(--text2); }
+  .team-search-input {
+    font-family: var(--font); font-size: 12px;
+    background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text); padding: 5px 10px; border-radius: 5px;
+    width: 200px; outline: none; transition: border-color .15s;
+  }
+  .team-search-input:focus { border-color: var(--accent); }
+  .team-search-input::placeholder { color: var(--text3); }
 
   /* ── KPI CARDS ── */
   .kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 20px; }
@@ -198,7 +206,7 @@
     <div class="logo-mark">IQ</div>
     <div>
       <div class="header-title">Chargeability Dashboard</div>
-      <div class="header-sub">IPSOS Data Solutions — SW &amp; QA Hub</div>
+      <div class="header-sub">IPSOS Bulgaria HUB — All Departments</div>
     </div>
   </div>
   <div style="display:flex;gap:10px;align-items:center;">
@@ -211,8 +219,8 @@
     <input type="file" id="file-input" accept=".csv">
     <div class="upload-icon">📂</div>
     <div class="upload-title">Drop your iTime export here</div>
-    <div class="upload-sub">Upload <strong>EmployeeTimeReport.csv</strong> from iTime.<br>All 10 SD/QA teams are auto-detected and calculated.</div>
-    <div class="upload-hint">10 teams · 80+ people · any date range</div>
+    <div class="upload-sub">Upload <strong>EmployeeTimeReport.csv</strong> from iTime.<br>All teams are auto-detected from the Direct Manager column.</div>
+    <div class="upload-hint">Auto-detect · Any hub · Any date range</div>
   </div>
 </div>
 
@@ -224,13 +232,15 @@
   <div class="filter-bar">
     <span class="filter-label">Month</span>
     <div id="month-filters" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
-    <div class="filter-sep"></div>
-    <span class="filter-label">Team</span>
-    <div id="team-filters" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
-    <div class="filter-sep" id="person-sep" style="display:none;"></div>
-    <span class="filter-label" id="person-label" style="display:none;">Person</span>
-    <div id="person-filters" style="display:none;gap:6px;flex-wrap:wrap;"></div>
     <button class="reload-btn" onclick="triggerReload()">↑ New file</button>
+  </div>
+  <div class="filter-bar" style="margin-top:-10px;">
+    <span class="filter-label">Team</span>
+    <div id="team-filters" style="display:flex;gap:6px;flex-wrap:wrap;flex:1;"></div>
+  </div>
+  <div class="filter-bar" id="person-row" style="margin-top:-10px;display:none;">
+    <span class="filter-label">Person</span>
+    <div id="person-filters" style="display:flex;gap:6px;flex-wrap:wrap;flex:1;"></div>
   </div>
 
   <!-- KPI ROW -->
@@ -256,9 +266,9 @@
       <div class="kpi-sub">per person / working day</div>
     </div>
     <div class="kpi c-red">
-      <div class="kpi-label">Vacation Hours</div>
+      <div class="kpi-label">Time Off</div>
       <div class="kpi-value" id="k-vac">—<span> h</span></div>
-      <div class="kpi-sub">time off logged</div>
+      <div class="kpi-sub" id="k-vac-sub">vacation · holiday</div>
     </div>
     <div class="kpi c-train">
       <div class="kpi-label">Training Hours</div>
@@ -293,10 +303,11 @@
       <div class="chart-wrap" style="height:210px;"><canvas id="ch-monthly"></canvas></div>
     </div>
     <div class="card">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <div class="card-title" style="margin-bottom:0;">Team comparison — chargeability %</div>
-        <span class="info-btn" onclick="showTip(this,'Team Comparison','Compares the overall chargeability % across all selected teams for the chosen period.<br><br>Each bar represents one team (TL excluded from that team\'s calculation). Useful for spotting which teams are over- or under-allocated relative to others.','Formula per team:\nChargeability % = Σ Chargeable h ÷ Σ Net Capacity × 100\n(aggregated across all active months)')">i</span>
+        <span class="info-btn" onclick="showTip(this,'Team Comparison','Compares chargeability % across selected teams for the chosen period.<br><br>Teams are sorted from highest to lowest. When more than 10 teams are visible, only the <strong>top 5</strong> and <strong>bottom 5</strong> are shown with a divider in between, so the chart stays readable.<br><br>Filtered to teams with ≥2 active people in the period.','Formula per team:\nChargeability % = Σ Chargeable h ÷ Σ Net Capacity × 100\n(aggregated across all active months)')">i</span>
       </div>
+      <div id="ch-teams-sub" style="font-size:10px;color:var(--text3);margin-bottom:10px;font-family:var(--mono);">&nbsp;</div>
       <div class="chart-wrap" style="height:210px;"><canvas id="ch-teams"></canvas></div>
     </div>
   </div>
@@ -313,10 +324,30 @@
     <div class="card">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
         <div class="card-title" style="margin-bottom:0;">Individual chargeability — selected team members</div>
-        <span class="info-btn" onclick="showTip(this,'Individual Chargeability','Horizontal bar chart showing chargeability % per person, sorted highest to lowest (max 20 shown).<br><br>A value <strong>above 100%</strong> means the person logged more chargeable hours than their net capacity — this is <strong>overtime</strong>. The data is accurate; it simply reflects more project hours than the standard monthly baseline allows.<br><br>TLs are excluded from this chart.','Formula per person:\nChargeability % = Chargeable h ÷ Net Capacity × 100\nNet Capacity = (months active × 160h) − Vacation h\n\n>100% = Overtime (chargeable > net capacity)')">i</span>
+        <span class="info-btn" onclick="showTip(this,'Individual Chargeability','Horizontal bar chart showing chargeability % per person, sorted highest to lowest. The number of rows shown matches the size of the largest team in the dataset, so a single team can always fit fully.<br><br>A value <strong>above 100%</strong> means the person logged more chargeable hours than their net capacity — this is <strong>overtime</strong>. The data is accurate; it simply reflects more project hours than the standard monthly baseline allows.<br><br>TLs are excluded from this chart.','Formula per person:\nChargeability % = Chargeable h ÷ Net Capacity × 100\nNet Capacity = (months × 160h) − Vacation − Holiday\n\n>100% = Overtime (chargeable > net capacity)')">i</span>
       </div>
       <div class="chart-wrap" style="height:210px;"><canvas id="ch-individual"></canvas></div>
     </div>
+  </div>
+
+  <!-- MONTHLY SUMMARY TABLE -->
+  <div class="table-card">
+    <div class="table-hdr">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="table-title">Monthly summary (excl. TLs)</div>
+        <span class="info-btn" onclick="showTip(this,'Monthly Summary Table','Aggregated view of team performance per calendar month. TLs are excluded from all calculations.<br><br><strong>People</strong> — number of non-TL team members with logged hours in that month.<br><strong>Net Cap</strong> — total available hours (160h × people − vacation − holiday).<br><strong>Chargeable</strong> — total billable project hours.<br><strong>Chargeability %</strong> — team-level chargeability for the month.<br><strong>Free Time</strong> — total non-billable hours (admin + idle).<br><strong>Avg Free / Day / Person</strong> — free time spread across working days and people.','Net Capacity = (people × 160h) − Σ Vacation − Σ Holiday\nFree Time = Net Capacity − Chargeable h\nChargeability % = Chargeable ÷ Net Capacity × 100\nAvg Free/Day/Person = Free Time ÷ (people × working days)')">i</span>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Month</th><th>People</th><th>Net Cap (h)</th>
+          <th>Chargeable (h)</th><th>Chargeability %</th>
+          <th>Free Time (h)</th><th>Avg Free / Day / Person</th>
+        </tr>
+      </thead>
+      <tbody id="mon-tbody"></tbody>
+    </table>
   </div>
 
   <!-- INDIVIDUAL TABLE -->
@@ -324,15 +355,15 @@
     <div class="table-hdr">
       <div style="display:flex;align-items:center;gap:8px;">
         <div class="table-title">Individual performance</div>
-        <span class="info-btn" onclick="showTip(this,'Individual Performance Table','One row per team member. Columns explained:<br><br><strong>Net Cap</strong> — available working hours after subtracting vacation (160h/month baseline).<br><strong>Chargeable</strong> — hours logged on client projects.<br><strong>Vacation</strong> — time-off hours logged in iTime.<br><strong>Free Time</strong> — Net Cap minus Chargeable. Includes admin tasks and unlogged time. Negative = overtime.<br><strong>Trained</strong> — hours spent in training as a trainee (Virtual training, Face-to-face training). Counted within Free Time, not Chargeable.<br><strong>Trainer</strong> — hours spent delivering training to others (Activities as a trainer). Counted within Free Time, not Chargeable.<br><strong>Chargeability %</strong> — how much of net capacity was spent on billable work.<br><strong>Free / Day</strong> — average free hours per working day in the period.<br><br><strong>Badges:</strong><br>OT = chargeability &gt;100% (overtime)<br>TRAIN = ≥40h trainee hours (significant training period)<br>COACH = ≥20h trainer hours (active mentor)','Net Capacity = (active months × 160h) − Vacation h\nFree Time = Net Capacity − Chargeable h\nChargeability % = Chargeable ÷ Net Capacity × 100\nFree / Day = Free Time ÷ working days in period\n\nTrained / Trainer hours are part of Free Time,\nshown separately for context only.')">i</span>
+        <span class="info-btn" onclick="showTip(this,'Individual Performance Table','One row per team member. Columns explained:<br><br><strong>Net Cap</strong> — available working hours after subtracting vacation and holidays (160h/month baseline).<br><strong>Chargeable</strong> — hours logged on client projects.<br><strong>Vacation</strong> — time-off hours logged in iTime.<br><strong>Free Time</strong> — Net Cap minus Chargeable. Includes admin tasks and unlogged time. Negative = overtime.<br><strong>Trained</strong> — hours spent in training as a trainee (Virtual training, Face-to-face training). Counted within Free Time, not Chargeable.<br><strong>Trainer</strong> — hours spent delivering training to others (Activities as a trainer). Counted within Free Time, not Chargeable.<br><strong>Chargeability %</strong> — how much of net capacity was spent on billable work.<br><strong>Free / Day</strong> — average free hours per working day in the period.<br><br><strong>Badges:</strong><br>OT = chargeability &gt;100% (overtime)<br>TRAIN = significant trainee hours (dynamic threshold)<br>COACH = significant trainer hours (dynamic threshold)','Net Capacity = (months × 160h) − Vacation − Holiday\nFree Time = Net Capacity − Chargeable h\nChargeability % = Chargeable ÷ Net Capacity × 100\nFree / Day = Free Time ÷ working days in period\n\nTrained / Trainer hours are part of Free Time,\nshown separately for context only.')">i</span>
       </div>
       <div class="legend">
         <span><span class="ldot" style="background:var(--green)"></span>High ≥65%</span>
         <span><span class="ldot" style="background:var(--amber)"></span>Mid 50–64%</span>
         <span><span class="ldot" style="background:var(--red)"></span>Low &lt;50%</span>
         <span><span class="ldot" style="background:#c084fc"></span>OT &gt;100%</span>
-        <span><span class="ldot" style="background:#60a5fa"></span>TRAIN ≥40h</span>
-        <span><span class="ldot" style="background:#a78bfa"></span>COACH ≥20h</span>
+        <span><span class="ldot" style="background:#60a5fa"></span>TRAIN</span>
+        <span><span class="ldot" style="background:#a78bfa"></span>COACH</span>
       </div>
     </div>
     <table>
@@ -355,146 +386,95 @@
     </table>
   </div>
 
-  <!-- MONTHLY SUMMARY TABLE -->
-  <div class="table-card">
-    <div class="table-hdr">
-      <div style="display:flex;align-items:center;gap:8px;">
-        <div class="table-title">Monthly summary (excl. TLs)</div>
-        <span class="info-btn" onclick="showTip(this,'Monthly Summary Table','Aggregated view of team performance per calendar month. TLs are excluded from all calculations.<br><br><strong>People</strong> — number of non-TL team members with logged hours in that month.<br><strong>Net Cap</strong> — total available hours (160h × people − vacation).<br><strong>Chargeable</strong> — total billable project hours.<br><strong>Chargeability %</strong> — team-level chargeability for the month.<br><strong>Free Time</strong> — total non-billable hours (admin + idle).<br><strong>Avg Free / Day / Person</strong> — free time spread across working days and people.','Net Capacity = (people × 160h) − Σ Vacation h\nFree Time = Net Capacity − Chargeable h\nChargeability % = Chargeable ÷ Net Capacity × 100\nAvg Free/Day/Person = Free Time ÷ (people × working days)')">i</span>
-      </div>
-    </div>
-    <table>
-      <thead>
-        <tr>
-          <th>Month</th><th>People</th><th>Net Cap (h)</th>
-          <th>Chargeable (h)</th><th>Chargeability %</th>
-          <th>Free Time (h)</th><th>Avg Free / Day / Person</th>
-        </tr>
-      </thead>
-      <tbody id="mon-tbody"></tbody>
-    </table>
-  </div>
-
-  <div class="footer-note">Capacity = 160 h/month · Net Capacity = 160 h − Vacation · Free Time = Net Capacity − Chargeable · TLs excluded from team averages · OT = chargeability &gt;100%</div>
+  <div class="footer-note">Capacity = 160 h/month · Net Capacity = 160 h − Vacation − Company Holiday · Free Time = Net Capacity − Chargeable · TLs excluded from averages · OT = chargeability &gt;100% · Teams auto-detected from Direct Manager column</div>
 </div>
 
 <script>
-// ─── TEAM CONFIG ────────────────────────────────────────────────────────────
-const TEAMS = [
-  {
-    tlFn: "Mihail", tlLn: "Yunchov", label: "Mihail Yunchov",
-    members: [
-      { fn: "Valentin", ln: "Tsonev" }, { fn: "Nikola", ln: "Gospodinov" },
-      { fn: "Nikolay", ln: "Nakov" }, { fn: "Tsvetin", ln: "Panov" },
-      { fn: "Ognyan", ln: "Goranov" }, { fn: "Bogdan", ln: "Rusev" },
-      { fn: "Aleksandrina", ln: "Kovachka" }, { fn: "Yoana", ln: "Atanasova" },
-      { fn: "Iliyan", ln: "Matsin" }, { fn: "Gabriel", ln: "Ganchev" },
-      { fn: "Svetoslav", ln: "Berberski" }
-    ]
-  },
-  {
-    tlFn: "Boris", tlLn: "Tashkov", label: "Boris Tashkov",
-    members: [
-      { fn: "Yanko", ln: "Stanchev" }, { fn: "Lidiya", ln: "Petrova" },
-      { fn: "Georgi", ln: "Peychev" }, { fn: "Angel", ln: "Pankovski" },
-      { fn: "Boyan", ln: "Boychev" }, { fn: "Emil", ln: "Mitov" },
-      { fn: "Aleksandar", ln: "Yachimov" }, { fn: "Silviya", ln: "Gelusheva" },
-      { fn: "Lazar", ln: "Lazarov" }
-    ]
-  },
-  {
-    tlFn: "Tsvetozar", tlLn: "Tonov", label: "Tsvetozar Tonov",
-    members: [
-      { fn: "Diana", ln: "Trifonova" }, { fn: "Valentina", ln: "Shopova - Ivanova" },
-      { fn: "Konstantin", ln: "Boev" }, { fn: "Deyan", ln: "Petkov" },
-      { fn: "Petar", ln: "Peev" }, { fn: "Damyan", ln: "Stoyanov" },
-      { fn: "Anzhela", ln: "Nurieva" }, { fn: "Stoyan", ln: "Dimitrov" }
-    ]
-  },
-  {
-    tlFn: "Darko", tlLn: "Ivanovski", label: "Darko Ivanovski",
-    members: [
-      { fn: "Elena", ln: "Rahova" }, { fn: "Severina", ln: "Stoyanova" },
-      { fn: "Velichko", ln: "Peev" }, { fn: "Martin", ln: "Dimitrov" },
-      { fn: "Nikola", ln: "Ganev" }, { fn: "Nikola", ln: "Diankov" },
-      { fn: "Veselin", ln: "Iskrenov" }, { fn: "Petar", ln: "Mitrevichin" }
-    ]
-  },
-  {
-    tlFn: "Ani", tlLn: "Chalakova", label: "Ani Chalakova",
-    members: [
-      { fn: "Stoyan", ln: "Stoyanov" }, { fn: "Emil", ln: "Penovski" },
-      { fn: "Yasen", ln: "Ivanov" }, { fn: "Monika", ln: "Ivanova" },
-      { fn: "Dimitar", ln: "Frantsuzov" }, { fn: "Stoyan", ln: "Boyadzhiev" },
-      { fn: "Mario", ln: "Tsvetanov" }, { fn: "Ivan", ln: "Rinkov" }
-    ]
-  },
-  {
-    tlFn: "Emil", tlLn: "Drumev", label: "Emil Drumev",
-    members: [
-      { fn: "Dafin", ln: "Dimitrov" }, { fn: "Katerina", ln: "Noteva" },
-      { fn: "Kristiyan", ln: "Karaychev" }, { fn: "Aleksandar", ln: "Aleksandrov" },
-      { fn: "Martin", ln: "Stefanov" }, { fn: "Dimitar", ln: "Dimov" }
-    ]
-  },
-  {
-    tlFn: "Adelina", tlLn: "Stefanova", label: "Adelina Stefanova",
-    members: [
-      { fn: "Martina", ln: "Markova" }, { fn: "Hristo", ln: "Stoyanov" },
-      { fn: "Lachezar", ln: "Petkov" }, { fn: "Katrin", ln: "Alnemri-Mratsenkova" },
-      { fn: "Slav", ln: "Pisarov" }, { fn: "Presiyan", ln: "Enchev" }
-    ]
-  },
-  {
-    tlFn: "Yoana", tlLn: "Radneva", label: "Yoana Radneva",
-    members: [
-      { fn: "Svilen", ln: "Petkov" }, { fn: "Bogdan", ln: "Petrov" },
-      { fn: "Hristian", ln: "Tsvetanov" }, { fn: "Daniel", ln: "Tsvetanov" },
-      { fn: "Veselin", ln: "Kadriev" }, { fn: "Mariya", ln: "Papazova" }
-    ]
-  },
-  {
-    tlFn: "Kiril", tlLn: "Paskov", label: "Kiril Paskov",
-    members: [
-      { fn: "Kamen", ln: "Dimitrov" }, { fn: "Denislav", ln: "Angelov" },
-      { fn: "David", ln: "Dimitrov" }, { fn: "Ivaylo", ln: "Rashev" },
-      { fn: "Evgeny", ln: "Kostadinov" }
-    ]
-  },
-  {
-    tlFn: "Hrisi", tlLn: "Nikolova", label: "Hrisi Nikolova",
-    members: [
-      { fn: "Mihael", ln: "Starchev" }, { fn: "Ivaylo", ln: "Ivanov" },
-      { fn: "Monika", ln: "Uzunova" }, { fn: "Monika", ln: "Petkova" }
-    ]
-  },
-];
+// ─── DYNAMIC TEAM DETECTION ─────────────────────────────────────────────────
+// TEAMS array is built dynamically from the CSV's Direct Manager column.
+// No manual configuration required — when the org changes, the next CSV upload reflects it automatically.
+let TEAMS = [];
 
 const WORKING_DAYS = {1:23,2:20,3:21,4:22,5:22,6:21,7:23,8:22,9:22,10:23,11:20,12:22};
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const TEAM_COLORS = ['#4f8ef7','#3ecf8e','#f5a623','#f26b6b','#2dd4bf','#a78bfa','#fb923c','#34d399','#e879f9','#60a5fa'];
 
 // Non-chargeable project codes — treated as free/admin time, not billable
-// Add new codes here when the business flags additional non-chargeable projects.
 const NON_CHARGEABLE_PROJECTS = new Set([
   '18-069151-01',  // GOH BG On Bench (variant 1)
   '18-069151-02',  // GOH BG On Bench (variant 2)
 ]);
 
+// Minimum direct reports for a manager to be treated as a real Team Lead
+// (filters out senior managers/directors from showing as TLs of small ad-hoc groups)
+const MIN_TEAM_SIZE = 2;
+
+// Training thresholds: dynamic — calculated as max(average among trained, FLOOR)
+// FLOOR ensures small training amounts (e.g. 5h orientation) do not trigger badges.
+const TRAIN_FLOOR_HOURS = 16;  // ≈ 2 working days
+const COACH_FLOOR_HOURS = 8;   // ≈ 1 working day
+
 let allData = [];
 let activeMonths = new Set();
-let activeTeams = new Set(); // indices into TEAMS
-let activePerson = null; // person key "fn|ln" or null for all
+let activeTeams = new Set();
+let activePerson = null;
 let charts = {};
 
-// Build lookup: "fn|ln" -> team index
-const personTeamMap = {};
-const tlSet = new Set();
-TEAMS.forEach((t, ti) => {
-  tlSet.add(t.tlFn + '|' + t.tlLn);
-  t.members.forEach(m => { personTeamMap[m.fn + '|' + m.ln] = ti; });
-});
-const allPersonKeys = new Set([...Object.keys(personTeamMap), ...tlSet]);
+// These are rebuilt every time a new CSV is loaded
+let personTeamMap = {};
+let tlSet = new Set();
+let allPersonKeys = new Set();
+
+// Calculated dynamically per data load
+let dynamicThresholds = { trainFloor: TRAIN_FLOOR_HOURS, coachFloor: COACH_FLOOR_HOURS };
+
+// ─── BUILD TEAMS FROM CSV ───────────────────────────────────────────────────
+function buildTeamsFromData(rawRows) {
+  // rawRows: parsed CSV rows with FName, LName, "Direct Manager" populated
+  const mgrMap = {}; // "Mgr Full Name" -> Set("fn|ln")
+  const personFullNames = {}; // "fn|ln" -> "First Last" (for matching to manager names)
+  const personManager = {}; // "fn|ln" -> "Mgr Full Name"
+
+  for (const row of rawRows) {
+    const fn = (row['FName'] || '').trim();
+    const ln = (row['LName'] || '').trim();
+    const mgr = (row['Direct Manager'] || '').trim();
+    if (!fn || !ln || !mgr) continue;
+    const key = fn + '|' + ln;
+    personFullNames[key] = fn + ' ' + ln;
+    personManager[key] = mgr;
+    if (!mgrMap[mgr]) mgrMap[mgr] = new Set();
+    mgrMap[mgr].add(key);
+  }
+
+  // Build TEAMS array
+  TEAMS = [];
+  const teamLookup = {}; // "Mgr Full Name" -> team index
+  Object.entries(mgrMap)
+    .filter(([_, members]) => members.size >= MIN_TEAM_SIZE)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .forEach(([mgrFullName, memberKeys]) => {
+      const parts = mgrFullName.split(' ');
+      const tlFn = parts[0] || '';
+      const tlLn = parts.slice(1).join(' ') || '';
+      const members = [];
+      memberKeys.forEach(key => {
+        const [fn, ln] = key.split('|');
+        members.push({ fn, ln });
+      });
+      members.sort((a, b) => a.ln.localeCompare(b.ln));
+      teamLookup[mgrFullName] = TEAMS.length;
+      TEAMS.push({ tlFn, tlLn, label: mgrFullName, members });
+    });
+
+  // Build lookup maps
+  personTeamMap = {};
+  tlSet = new Set();
+  TEAMS.forEach((t, ti) => {
+    tlSet.add(t.tlFn + '|' + t.tlLn);
+    t.members.forEach(m => { personTeamMap[m.fn + '|' + m.ln] = ti; });
+  });
+  allPersonKeys = new Set([...Object.keys(personTeamMap), ...tlSet]);
+}
 
 // ─── FILE HANDLING ──────────────────────────────────────────────────────────
 document.getElementById('drop-zone').addEventListener('dragover', e => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); });
@@ -516,6 +496,14 @@ function parseFile(file) {
 
 // ─── DATA PROCESSING ────────────────────────────────────────────────────────
 function processData(rows) {
+  // STEP 1: Build TEAMS dynamically from Direct Manager column
+  buildTeamsFromData(rows);
+  if (TEAMS.length === 0) {
+    alert('No teams could be detected.\nCheck that the CSV has a "Direct Manager" column populated.');
+    return;
+  }
+
+  // STEP 2: Parse rows into allData
   allData = [];
   for (const row of rows) {
     const fn = (row['FName'] || '').trim();
@@ -529,23 +517,28 @@ function processData(rows) {
     const d = new Date(dateStr);
     if (isNaN(d)) continue;
     const month = d.getMonth() + 1, year = d.getFullYear();
+    // Category detection
     const isVac = /vacation/i.test(task);
+    const isHoliday = /company holiday/i.test(task);
     const isAdmin = proj.toLowerCase() === 'admin';
     const isOnBench = NON_CHARGEABLE_PROJECTS.has(proj);
-    // Training detection — task-based (project is usually Admin)
     const isTrainer = /activities as a trainer/i.test(task);
     const isTrainee = !isTrainer && /(virtual training|face-to-face.*train|in-person train)/i.test(task);
+    // Hierarchy: Vacation > Holiday > Admin/OnBench > Chargeable
     let cat = 'Chargeable';
     if (isVac) cat = 'Vacation';
+    else if (isHoliday) cat = 'Holiday';
     else if (isAdmin || isOnBench) cat = 'Admin';
     allData.push({ fn, ln, key, month, year, hours, cat, isTrainer, isTrainee, teamIdx: personTeamMap[key] ?? -1, isTL: tlSet.has(key) });
   }
 
-  if (!allData.length) { alert('No matching team members found.'); return; }
+  if (!allData.length) { alert('No data could be parsed from the file.'); return; }
 
+  // STEP 3: Initialize filters
   const ymSet = new Set(allData.map(r => r.year * 100 + r.month));
   activeMonths = new Set(ymSet);
   activeTeams = new Set(TEAMS.map((_, i) => i));
+  activePerson = null;
 
   buildMonthFilters([...ymSet].sort());
   buildTeamFilters();
@@ -623,6 +616,7 @@ function buildTeamFilters() {
     c.appendChild(b);
   });
 }
+
 function syncTeamBtns(activeTi) {
   document.querySelectorAll('#team-filters .f-btn').forEach(b => {
     b.classList.remove('active','all-active');
@@ -632,9 +626,7 @@ function syncTeamBtns(activeTi) {
 }
 
 function hidePersonFilter() {
-  document.getElementById('person-sep').style.display = 'none';
-  document.getElementById('person-label').style.display = 'none';
-  document.getElementById('person-filters').style.display = 'none';
+  document.getElementById('person-row').style.display = 'none';
 }
 
 function buildPersonFilters(teamIdx) {
@@ -643,9 +635,7 @@ function buildPersonFilters(teamIdx) {
   c.innerHTML = '';
 
   // Show row
-  document.getElementById('person-sep').style.display = 'block';
-  document.getElementById('person-label').style.display = 'inline';
-  c.style.display = 'flex';
+  document.getElementById('person-row').style.display = 'flex';
 
   // "All" toggle
   const all = btn('All', true, 'all-active', () => {
@@ -716,20 +706,22 @@ function update() {
   });
 
   // Per person stats
-  const personStats = {}; // key -> { fn, ln, isTL, teamIdx, months, ch, vac, adm }
+  const personStats = {};
   for (const r of filteredFull) {
-    if (!personStats[r.key]) personStats[r.key] = { fn: r.fn, ln: r.ln, isTL: r.isTL, teamIdx: r.teamIdx, months: new Set(), ch: 0, vac: 0, adm: 0, trained: 0, trainer: 0 };
+    if (!personStats[r.key]) personStats[r.key] = { fn: r.fn, ln: r.ln, isTL: r.isTL, teamIdx: r.teamIdx, months: new Set(), ch: 0, vac: 0, hol: 0, adm: 0, trained: 0, trainer: 0 };
     const p = personStats[r.key];
     p.months.add(r.year * 100 + r.month);
     if (r.cat === 'Chargeable') p.ch += r.hours;
     else if (r.cat === 'Vacation') p.vac += r.hours;
+    else if (r.cat === 'Holiday') p.hol += r.hours;
     else p.adm += r.hours;
     if (r.isTrainee) p.trained += r.hours;
     if (r.isTrainer) p.trainer += r.hours;
   }
   for (const p of Object.values(personStats)) {
     p.cap = p.months.size * 160;
-    p.netCap = p.cap - p.vac;
+    // Net Capacity removes both vacation AND company holidays (both are unavailable time)
+    p.netCap = p.cap - p.vac - p.hol;
     p.free = p.netCap - p.ch;
     p.pct = p.netCap > 0 ? p.ch / p.netCap * 100 : 0;
     let wd = 0;
@@ -738,22 +730,32 @@ function update() {
     p.fpd = wd > 0 ? p.free / wd : 0;
   }
 
+  // Calculate dynamic training thresholds: max(average among those trained, FLOOR)
+  const traineesWithHours = Object.values(personStats).filter(p => !p.isTL && p.trained > 0);
+  const trainersWithHours = Object.values(personStats).filter(p => !p.isTL && p.trainer > 0);
+  const avgTrained = traineesWithHours.length > 0
+    ? traineesWithHours.reduce((s, p) => s + p.trained, 0) / traineesWithHours.length : 0;
+  const avgTrainer = trainersWithHours.length > 0
+    ? trainersWithHours.reduce((s, p) => s + p.trainer, 0) / trainersWithHours.length : 0;
+  dynamicThresholds.trainFloor = Math.max(avgTrained, TRAIN_FLOOR_HOURS);
+  dynamicThresholds.coachFloor = Math.max(avgTrainer, COACH_FLOOR_HOURS);
+
   // Monthly breakdown (excl TLs unless a TL is explicitly the selected person)
   const monthMap = {};
-  for (const ym of [...activeMonths].sort()) monthMap[ym] = { ch: 0, vac: 0, netCap: 0, train: 0, people: new Set() };
+  for (const ym of [...activeMonths].sort()) monthMap[ym] = { ch: 0, vac: 0, hol: 0, netCap: 0, train: 0, people: new Set() };
   for (const r of filteredFull) {
-    // Include TL only when they are the explicitly selected person
     if (r.isTL && !(activePerson && r.key === activePerson)) continue;
     const ym = r.year * 100 + r.month;
     if (!monthMap[ym]) continue;
     if (r.cat === 'Chargeable') monthMap[ym].ch += r.hours;
     else if (r.cat === 'Vacation') monthMap[ym].vac += r.hours;
+    else if (r.cat === 'Holiday') monthMap[ym].hol += r.hours;
     if (r.isTrainee || r.isTrainer) monthMap[ym].train += r.hours;
     monthMap[ym].people.add(r.key);
   }
   for (const m of Object.values(monthMap)) {
     m.n = m.people.size;
-    m.netCap = m.n * 160 - m.vac;
+    m.netCap = m.n * 160 - m.vac - m.hol;
     m.free = m.netCap - m.ch;
     m.pct = m.netCap > 0 ? m.ch / m.netCap * 100 : 0;
   }
@@ -820,11 +822,10 @@ function updatePeriodBadge() {
 }
 
 function updateKPIs(ps) {
-  let ch=0, nc=0, free=0, vac=0, wd=0, trained=0, trainer=0;
+  let ch=0, nc=0, free=0, vac=0, hol=0, wd=0, trained=0, trainer=0;
   for (const p of Object.values(ps)) {
-    // Include TL only when they are the explicitly selected person
     if (p.isTL && !(activePerson && (p.fn + '|' + p.ln) === activePerson)) continue;
-    ch += p.ch; nc += p.netCap; free += p.free; vac += p.vac; wd += p.wd;
+    ch += p.ch; nc += p.netCap; free += p.free; vac += p.vac; hol += (p.hol||0); wd += p.wd;
     trained += p.trained || 0; trainer += p.trainer || 0;
   }
   const pct = nc > 0 ? ch/nc*100 : 0;
@@ -832,13 +833,14 @@ function updateKPIs(ps) {
   document.getElementById('k-proj').innerHTML = Math.round(ch) + '<span> h</span>';
   document.getElementById('k-free').innerHTML = Math.round(free) + '<span> h</span>';
   document.getElementById('k-fpd').innerHTML = (wd > 0 ? free/wd : 0).toFixed(2) + '<span> h</span>';
-  document.getElementById('k-vac').innerHTML = Math.round(vac) + '<span> h</span>';
+  document.getElementById('k-vac').innerHTML = Math.round(vac + hol) + '<span> h</span>';
+  const vacSub = document.getElementById('k-vac-sub');
+  if (vacSub) vacSub.textContent = `vacation ${Math.round(vac)}h · holiday ${Math.round(hol)}h`;
 
   const totalTrain = trained + trainer;
   document.getElementById('k-train').innerHTML = Math.round(totalTrain) + '<span> h</span>';
   document.getElementById('k-train-sub').textContent = `trained ${Math.round(trained)}h · trainer ${Math.round(trainer)}h`;
 
-  // Update KPI subtitle to show context
   const sub = document.getElementById('k-charge-sub');
   if (sub) {
     if (activePerson) {
@@ -855,9 +857,13 @@ function bc(pct) { return pct >= 65 ? '#3ecf8e' : pct >= 50 ? '#f5a623' : '#f26b
 function updateHeatGrid(ts) {
   const g = document.getElementById('heat-grid');
   g.innerHTML = '';
+  let shown = 0;
   TEAMS.forEach((t, ti) => {
     if (!activeTeams.has(ti)) return;
     const s = ts[ti] || {};
+    const activePeople = s.n || 0;
+    // Only display teams with at least 2 people who logged data in the selected period
+    if (activePeople < 2) return;
     const pct = s.pct || 0;
     const col = bc(pct);
     const cell = document.createElement('div');
@@ -865,7 +871,7 @@ function updateHeatGrid(ts) {
     cell.style.setProperty('--c', col);
     cell.innerHTML = `<div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:${col};border-radius:3px 0 0 3px;"></div>
       <div class="heat-cell-name">${t.tlLn}</div>
-      <div class="heat-cell-sub">${t.tlFn} · ${s.n||0} people</div>
+      <div class="heat-cell-sub">${t.tlFn} · ${activePeople} people</div>
       <div class="heat-cell-pct" style="color:${col}">${pct.toFixed(1)}<span style="font-size:12px;color:var(--text2)">%</span></div>`;
     cell.onclick = () => {
       activeTeams = new Set([ti]);
@@ -873,7 +879,12 @@ function updateHeatGrid(ts) {
       update();
     };
     g.appendChild(cell);
+    shown++;
   });
+  // Empty state
+  if (shown === 0) {
+    g.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:24px;color:var(--text3);font-size:12px;">No teams with ≥2 active people in the selected period.</div>`;
+  }
 }
 
 function destroyChart(id) { if (charts[id]) { charts[id].destroy(); charts[id] = null; } }
@@ -887,8 +898,12 @@ function updateCharts(monthMap, teamStats, personStats) {
   // Free / Admin without training (since training is part of Free, shown separately)
   const mFreeOther = yms.map(ym => Math.round((monthMap[ym].free||0) - (monthMap[ym].train||0)));
   const mVac = yms.map(ym => Math.round(monthMap[ym].vac||0));
+  const mHol = yms.map(ym => Math.round(monthMap[ym].hol||0));
 
-  // Chart 1: Monthly chargeability
+  // Compute the Team Comparison height first, so Monthly chart can match it
+  // (this requires deferring the actual chart creation to after we know the team count)
+
+  // Chart 1: Monthly chargeability — height matches Team Comparison
   destroyChart('ch-monthly');
   charts['ch-monthly'] = new Chart(document.getElementById('ch-monthly'), {
     type: 'bar',
@@ -904,19 +919,71 @@ function updateCharts(monthMap, teamStats, personStats) {
   });
 
   // Chart 2: Team comparison
-  const activeTeamList = TEAMS.map((t,ti) => ({t,ti})).filter(({ti}) => activeTeams.has(ti));
+  // Chart 2: Team comparison — horizontal bars sorted by chargeability %
+  // Filter to teams with ≥2 active people in the period
+  // Disambiguated labels: "F. Lastname" to handle managers with same surname
+  const allTeams = TEAMS.map((t, ti) => ({ t, ti, s: teamStats[ti] || {} }))
+    .filter(({ ti, s }) => activeTeams.has(ti) && (s.n || 0) >= 2)
+    .sort((a, b) => (b.s.pct || 0) - (a.s.pct || 0));
+
+  // When > 10 teams: split into top 5 + bottom 5 with a visual gap
+  const SPLIT_THRESHOLD = 10;
+  const TOP_N = 5;
+  let displayList, hiddenCount = 0, splitMode = false;
+  if (allTeams.length > SPLIT_THRESHOLD) {
+    splitMode = true;
+    const topPart = allTeams.slice(0, TOP_N);
+    const bottomPart = allTeams.slice(-TOP_N);
+    hiddenCount = allTeams.length - 2 * TOP_N;
+    // Insert separator entries — 2 empty rows that render as gap
+    displayList = [
+      ...topPart,
+      { t: { tlFn: '', tlLn: '' }, ti: -1, s: { pct: null }, _separator: true },
+      { t: { tlFn: '', tlLn: '·  ·  ·' }, ti: -2, s: { pct: null }, _separator: true },
+      { t: { tlFn: '', tlLn: '' }, ti: -3, s: { pct: null }, _separator: true },
+      ...bottomPart
+    ];
+  } else {
+    displayList = allTeams;
+  }
+
+  // Update subtitle context line
+  const subEl = document.getElementById('ch-teams-sub');
+  if (subEl) {
+    if (splitMode) {
+      const topPct = (allTeams[TOP_N - 1].s.pct || 0).toFixed(1);
+      const botPct = (allTeams[allTeams.length - TOP_N].s.pct || 0).toFixed(1);
+      subEl.textContent = `Top ${TOP_N} · Bottom ${TOP_N}  —  ${hiddenCount} teams hidden (between ${botPct}% and ${topPct}%)`;
+    } else {
+      subEl.textContent = `${allTeams.length} teams`;
+    }
+  }
+
   destroyChart('ch-teams');
+  const teamsH = Math.max(210, displayList.length * 22 + 40);
+  document.getElementById('ch-teams').parentElement.style.height = teamsH + 'px';
+  document.getElementById('ch-monthly').parentElement.style.height = teamsH + 'px';
   charts['ch-teams'] = new Chart(document.getElementById('ch-teams'), {
     type: 'bar',
     data: {
-      labels: activeTeamList.map(({t}) => t.tlLn),
+      labels: displayList.map(({ t, _separator }) => _separator ? t.tlLn : (t.tlFn.charAt(0) + '. ' + t.tlLn)),
       datasets: [{
-        label: '%', data: activeTeamList.map(({ti}) => +((teamStats[ti]?.pct||0).toFixed(1))),
-        backgroundColor: activeTeamList.map(({ti}) => { const p=teamStats[ti]?.pct||0; return p>=65?'rgba(62,207,142,.7)':p>=50?'rgba(245,166,35,.7)':'rgba(242,107,107,.7)'; }),
-        borderColor: activeTeamList.map(({ti}) => bc(teamStats[ti]?.pct||0)), borderWidth: 1, borderRadius: 5,
+        label: '%',
+        data: displayList.map(({ s, _separator }) => _separator ? null : +((s.pct || 0).toFixed(1))),
+        backgroundColor: displayList.map(({ s, _separator }) => { if (_separator) return 'transparent'; const p = s.pct || 0; return p >= 65 ? 'rgba(62,207,142,.7)' : p >= 50 ? 'rgba(245,166,35,.7)' : 'rgba(242,107,107,.7)'; }),
+        borderColor: displayList.map(({ s, _separator }) => _separator ? 'transparent' : bc(s.pct || 0)),
+        borderWidth: 1, borderRadius: 4,
       }]
     },
-    options: chartOpts('y', v => v + '%', 0, 100)
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      indexAxis: 'y',
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.parsed.x === null ? '' : ' ' + ctx.parsed.x + '%' }, filter: ctx => ctx.parsed.x !== null } },
+      scales: {
+        x: { min: 0, max: 100, ticks: { color: '#8e90a0', font: { family: 'DM Mono', size: 12 }, callback: v => v + '%' }, grid: { color: 'rgba(255,255,255,.04)' } },
+        y: { ticks: { color: '#c2c4d0', font: { family: 'DM Mono', size: 12 } }, grid: { color: 'rgba(255,255,255,.04)' } }
+      }
+    }
   });
 
   // Chart 3: Stacked breakdown
@@ -929,24 +996,29 @@ function updateCharts(monthMap, teamStats, personStats) {
         { label: 'Chargeable', data: mCh, backgroundColor: 'rgba(62,207,142,.7)', borderRadius: 3 },
         { label: 'Free / Admin', data: mFreeOther, backgroundColor: 'rgba(79,142,247,.5)', borderRadius: 3 },
         { label: 'Training', data: mTrain, backgroundColor: 'rgba(167,139,250,.6)', borderRadius: 3 },
+        { label: 'Holiday', data: mHol, backgroundColor: 'rgba(220,38,38,.45)', borderRadius: 3 },
         { label: 'Vacation', data: mVac, backgroundColor: 'rgba(245,166,35,.5)', borderRadius: 3 },
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: true, labels: { color: '#8e90a0', font: { family: 'DM Mono', size: 10 }, boxWidth: 10, padding: 12 } } },
+      plugins: { legend: { display: true, labels: { color: '#c2c4d0', font: { family: 'DM Mono', size: 11 }, boxWidth: 10, padding: 14 } } },
       scales: {
-        x: { stacked: true, ticks: { color: '#4e5060', font: { family: 'DM Mono', size: 10 } }, grid: { color: 'rgba(255,255,255,.04)' } },
-        y: { stacked: true, ticks: { color: '#4e5060', font: { family: 'DM Mono', size: 10 } }, grid: { color: 'rgba(255,255,255,.04)' } }
+        x: { stacked: true, ticks: { color: '#8e90a0', font: { family: 'DM Mono', size: 12 } }, grid: { color: 'rgba(255,255,255,.04)' } },
+        y: { stacked: true, ticks: { color: '#8e90a0', font: { family: 'DM Mono', size: 12 } }, grid: { color: 'rgba(255,255,255,.04)' } }
       }
     }
   });
 
-  // Chart 4: Individual horizontal bar (non-TL only, max 20)
-  const indPeople = Object.values(personStats).filter(p => !p.isTL).sort((a,b) => b.pct - a.pct).slice(0, 20);
+  // Chart 4: Individual horizontal bar (non-TL only, capped at largest team size)
+  // Cap = size of the largest team (so a team-sized chart is always feasible)
+  const maxTeamSize = TEAMS.length > 0 ? Math.max(...TEAMS.map(t => t.members.length)) : 20;
+  const indPeople = Object.values(personStats).filter(p => !p.isTL).sort((a,b) => b.pct - a.pct).slice(0, maxTeamSize);
   destroyChart('ch-individual');
   const indH = Math.max(210, indPeople.length * 22 + 40);
   document.getElementById('ch-individual').parentElement.style.height = indH + 'px';
+  // Sync breakdown chart height with individual chart so they appear balanced side by side
+  document.getElementById('ch-breakdown').parentElement.style.height = indH + 'px';
   charts['ch-individual'] = new Chart(document.getElementById('ch-individual'), {
     type: 'bar',
     data: {
@@ -961,8 +1033,8 @@ function updateCharts(monthMap, teamStats, personStats) {
       ...chartOpts('x', v => v + '%', 0, 100),
       indexAxis: 'y',
       scales: {
-        x: { min:0, max:100, ticks:{color:'#4e5060',font:{family:'DM Mono',size:10},callback:v=>v+'%'}, grid:{color:'rgba(255,255,255,.04)'} },
-        y: { ticks:{color:'#8e90a0',font:{family:'DM Mono',size:10}}, grid:{color:'rgba(255,255,255,.04)'} }
+        x: { min:0, max:100, ticks:{color:'#8e90a0',font:{family:'DM Mono',size:12},callback:v=>v+'%'}, grid:{color:'rgba(255,255,255,.04)'} },
+        y: { ticks:{color:'#c2c4d0',font:{family:'DM Mono',size:12}}, grid:{color:'rgba(255,255,255,.04)'} }
       }
     }
   });
@@ -974,8 +1046,8 @@ function chartOpts(axis, tickFmt, min, max) {
     responsive: true, maintainAspectRatio: false,
     plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + ctx.parsed[axis === 'y' ? 'y' : 'x'] + (tickFmt ? '' : '') } } },
     scales: {
-      x: { ticks:{color:'#4e5060',font:{family:'DM Mono',size:10},...(axis==='y'?{}:{callback:tickFmt}),...(axis==='y'?{}:(min!==undefined?{min,max}:{}))}, grid:{color:'rgba(255,255,255,.04)'} },
-      y: { ticks:{color:'#4e5060',font:{family:'DM Mono',size:10},...(axis==='x'?{}:{callback:tickFmt}),...(axis==='x'?{}:(min!==undefined?{min,max}:{}))}, grid:{color:'rgba(255,255,255,.04)'} }
+      x: { ticks:{color:'#8e90a0',font:{family:'DM Mono',size:12},...(axis==='y'?{}:{callback:tickFmt}),...(axis==='y'?{}:(min!==undefined?{min,max}:{}))}, grid:{color:'rgba(255,255,255,.04)'} },
+      y: { ticks:{color:'#8e90a0',font:{family:'DM Mono',size:12},...(axis==='x'?{}:{callback:tickFmt}),...(axis==='x'?{}:(min!==undefined?{min,max}:{}))}, grid:{color:'rgba(255,255,255,.04)'} }
     }
   };
 }
@@ -1046,8 +1118,8 @@ function updateIndTable(ps) {
 
     // Status badges — combine standard tag with optional Train/Coach badges
     let badges = tag(p.pct, p.isTL);
-    if (trainedH >= 40) badges += ' <span class="tag tag-train">TRAIN</span>';
-    if (trainerH >= 20) badges += ' <span class="tag tag-coach">COACH</span>';
+    if (trainedH >= dynamicThresholds.trainFloor) badges += ' <span class="tag tag-train">TRAIN</span>';
+    if (trainerH >= dynamicThresholds.coachFloor) badges += ' <span class="tag tag-coach">COACH</span>';
 
     html += `<tr class="${p.isTL ? 'tl-row' : ''}">
       <td class="bold">${p.fn} ${p.ln}</td>
@@ -1074,12 +1146,12 @@ function updateIndTable(ps) {
 function updateMonTable(monthMap) {
   const tbody = document.getElementById('mon-tbody');
   const yms = Object.keys(monthMap).map(Number).sort();
-  let html = '', totCh=0, totNc=0, totFr=0;
+  let html = '', totCh=0, totNc=0, totFr=0, totN=0, totFpd=0, totWd=0;
   for (const ym of yms) {
     const m = monthMap[ym], mo = ym%100, yr = Math.floor(ym/100);
     const wd = WORKING_DAYS[mo] || 20;
     const fpd = m.n > 0 && wd > 0 ? m.free / (m.n * wd) : 0;
-    totCh += m.ch; totNc += m.netCap; totFr += m.free;
+    totCh += m.ch; totNc += m.netCap; totFr += m.free; totN += m.n; totFpd += fpd; totWd += m.n * wd;
     const barW = Math.min(m.pct, 100).toFixed(1);
     html += `<tr>
       <td><span style="font-family:var(--mono);font-size:10px;background:var(--bg4);padding:2px 8px;border-radius:4px;">${MONTH_NAMES[mo-1]} ${yr}</span></td>
@@ -1098,8 +1170,12 @@ function updateMonTable(monthMap) {
   }
   if (yms.length > 1) {
     const ap = totNc > 0 ? totCh/totNc*100 : 0;
+    const avgN = Math.round(totN / yms.length);
+    // Weighted average: total free time across months ÷ total person-working-days
+    const avgFpd = totWd > 0 ? totFr / totWd : 0;
     html += `<tr style="font-weight:500;background:var(--bg3);">
-      <td style="font-size:10px;color:var(--text2);font-family:var(--mono);">Average</td><td class="mono">—</td>
+      <td style="font-size:10px;color:var(--text2);font-family:var(--mono);">Average</td>
+      <td class="mono">${avgN}</td>
       <td class="mono">${Math.round(totNc/yms.length)}</td>
       <td class="mono">${(Math.round(totCh/yms.length*10)/10).toFixed(1)}</td>
       <td>
@@ -1109,7 +1185,7 @@ function updateMonTable(monthMap) {
         </div>
       </td>
       <td class="mono">${(Math.round(totFr/yms.length*10)/10).toFixed(1)}</td>
-      <td class="mono">—</td>
+      <td class="mono">${avgFpd.toFixed(2)} h</td>
     </tr>`;
   }
   tbody.innerHTML = html;
